@@ -30,7 +30,7 @@ import { dat, truot, type Ca, type CauHinh, type GoiHttp, type PhanHoi } from '.
  *    | RA  | hệ thống của **bên đối ứng** | **CÓ** — đây mới là thứ cấp hạng |
  *
  * ⏸ Bảy ca chiều VÀO có phải **điều kiện vào cửa** không: **CHỜ SA**. Nền tảng KHÔNG tự mở rộng điều
- *    kiện vào cửa.3 mới đóng băng rằng *năng lực PHỤC HỒI* không phải điều kiện vào cửa,
+ *    kiện vào cửa — quyết định kiến trúc mới đóng băng rằng *năng lực PHỤC HỒI* không phải điều kiện vào cửa,
  *    nó không nói gì về chiều vào. Tới khi có phán quyết, ca chiều VÀO **in ra** chứ không ghi sổ.
  */
 

@@ -9,13 +9,15 @@
  *    có `AppModule` của nền tảng. Một dòng đọc CSDL lọt vào là bộ kiểm thôi chạy được ở đúng chỗ nó
  *    sinh ra để chạy.
  *
+ *    Đo 2026-08-22 trên bộ e2e sẵn có: **111/176 (63%)** phép khẳng định nằm trong khối đọc thẳng
  *    Phần lớn bộ kiểm nội bộ tương đương của chúng tôi đọc thẳng CSDL và dựng app trong tiến trình —
  *    đó là lý do bộ này được viết lại thành hộp đen thuần HTTP, không dùng chung hạ tầng kiểm thử đó.
  *
- * 🔴 **Bộ này KHÔNG ghi được vào sổ của nền tảng, và đó là THIẾT KẾ.** Ghi nhận hạng đi qua một cửa
- *    nội bộ có quyền và có nhật ký — bộ kiểm này không cầm khoá của cửa đó. Bạn chạy bộ này trên máy
- *    mình thì kết quả **không có đường nào** tự vào sổ. Cổng nghiệm thu thành **tính chất cấu trúc**
- *    thay vì một phép kiểm ai đó phải nhớ (xem hợp đồng §8.5).
+ * 🔴 **Bộ này KHÔNG ghi được vào sổ của nền tảng, và đó là THIẾT KẾ.** Đường ghi
+ *    ghi nhận hạng đi qua một cửa nội bộ có quyền và có nhật ký. Bên đối ứng chạy bộ này trên máy
+ *    họ thì kết quả **không có đường
+ *    nào** vào cột, vì bộ kiểm không cầm khoá của cửa đó. Cổng nghiệm thu thành **tính chất cấu trúc**
+ *    thay vì một phép kiểm ai đó phải nhớ.
  */
 
 /** Ba năng lực phục hồi — tập ĐÓNG của nền tảng, khớp enum `RecoveryCapability` ở CSDL. */
@@ -110,7 +112,7 @@ export function ketQuaVaoCua(kq: readonly KetQuaCa[]): 'PASS' | 'FAIL' {
 /**
  * Năng lực SUY từ kết quả — chỉ tính ca chiều RA, và chỉ ca ĐẠT.
  *
- * 🔴 **THAY THẾ, không cộng dồn** Hàm này trả tập của **đúng lượt chạy này**; người gọi
+ * 🔴 **THAY THẾ, không cộng dồn.** Hàm này trả tập của **đúng lượt chạy này**; người gọi
  *    ghi đè cột, không hợp với giá trị cũ: *"không pass đủ thì hạng HẠ
  *    XUỐNG, không có ô gần đạt"* — cộng dồn thì hạng chỉ đi lên được, và một bên vừa hỏng đường phục
  *    hồi vẫn giữ `FULL_RECOVERY` mãi.

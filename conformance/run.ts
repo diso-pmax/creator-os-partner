@@ -17,7 +17,7 @@ import { ketQuaVaoCua, nangLucDaChungMinh, type CauHinh, type GoiHttp, type KetQ
  *
  * 🔴 **Bộ này KHÔNG ghi vào sổ nào.** Nó in ra. Ghi nhận hạng là việc của một cửa nội bộ có quyền
  *    và có nhật ký — bộ này không cầm khoá của cửa đó. Bạn chạy trên máy mình ⇒ kết quả không có
- *    đường nào tự vào sổ của nền tảng (xem hợp đồng §8.5).
+ *    đường nào tự vào sổ của nền tảng.
  */
 
 /** Đường gọi THẬT. Tách khỏi bộ ca để ca tự nó kiểm được bằng phản hồi bơm tay. */
@@ -87,7 +87,7 @@ export function inBaoCao(kq: readonly KetQuaCa[]): string {
     //    SA bắt tách tên đích danh để hai thứ này không bị đọc lẫn vào nhau.
     '',
     'Kết quả này CHƯA vào sổ của nền tảng — nó chỉ IN RA để bạn tự sửa.',
-    'Chỉ lượt chạy CỦA NỀN TẢNG (trỏ vào hệ thống bạn) mới ghi được hạng — xem hợp đồng §8.5.',
+    'Chỉ lượt chạy CỦA NỀN TẢNG (trỏ vào hệ thống bạn) mới ghi được hạng.',
   ].join('\n');
 }
 
