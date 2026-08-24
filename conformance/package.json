@@ -1,0 +1,12 @@
+{
+  "name": "conformance",
+  "private": true,
+  "type": "module",
+  "description": "Bài kiểm hợp chuẩn — chạy trên hệ thống của bên đối ứng. Không phụ thuộc gì ngoài node:crypto.",
+  "scripts": {
+    "start": "tsx run.ts"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.2"
+  }
+}
