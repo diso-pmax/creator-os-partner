@@ -351,3 +351,173 @@ RA.push({
 export const CA_BAT_BUOC: readonly Ca[] = [...VAO, ...RA];
 export const SO_CA_VAO = VAO.length;
 export const SO_CA_RA = RA.length;
+
+// ── LAUNCH — 8 ca ──────────────────────────────────────────────────────────────────────────────
+//
+// 🔴 **CỐ Ý tách khỏi `CA_BAT_BUOC`, KHÔNG gộp vào VAO.** `chieu:'VAO'` nuôi thẳng cổng vào cửa
+// (`ketQuaVaoCua()`) — gộp LAUNCH vào đó là âm thầm đổi ý nghĩa một cổng đã đóng băng. Xem
+// `contract.ts` — `Chieu` đã có nhánh thứ ba riêng cho việc này.
+
+/** Gọi `POST .../campaigns/:id/launch` — HMAC kênh LAUNCH, CÙNG khuôn ký `ky()` ở trên, khác secret. */
+function taoLaunch(cf: CauHinh, goi: GoiHttp, campaignId: string, externalUserId: string): Promise<PhanHoi> {
+  const raw = JSON.stringify({ externalUserId });
+  const ts = String(Math.floor(Date.now() / 1000));
+  return goi(`${cf.cuaNenTang}/campaigns/${campaignId}/launch`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-API-Key': cf.accessKey,
+      'X-Timestamp': ts,
+      'X-Signature': ky(cf.launchSecret, ts, raw),
+    },
+    body: raw,
+  });
+}
+
+/**
+ * `GET /launch` — KHÔNG HMAC, `code` tự nó là credential. `redirect:'manual'` BẮT BUỘC: mặc định
+ * `fetch` sẽ tự đi theo redirect sang host cổng thưởng — nơi máy chạy bộ kiểm của đối tác thường
+ * không với tới — và ta mất luôn cơ hội đọc `status`/`Location`/`Set-Cookie` của chính lượt consume.
+ * `ghiDe` cho ㉔ LAUNCH-7 gắn thêm tham số query rác lên `launchUrl` gốc.
+ */
+function moLaunch(goi: GoiHttp, launchUrl: string, ghiDe?: Record<string, string>): Promise<PhanHoi> {
+  const u = new URL(launchUrl);
+  for (const [k, v] of Object.entries(ghiDe ?? {})) u.searchParams.set(k, v);
+  return goi(u.toString(), { method: 'GET', headers: {}, redirect: 'manual' });
+}
+
+const laLaunchUrl = (b: unknown): b is { launchUrl: string; expiresAt: string } =>
+  typeof (b as { launchUrl?: unknown } | null)?.launchUrl === 'string';
+
+const nguoiDungMoi = () => `conf-user-${randomUUID().slice(0, 8)}`;
+
+const LAUNCH: Ca[] = [
+  {
+    ma: 'LAUNCH-1',
+    chieu: 'LAUNCH',
+    ten: 'campaign + externalUserId hợp lệ ⇒ 200 + launchUrl',
+    capNangLuc: null,
+    async chay(cf, goi) {
+      const r = await taoLaunch(cf, goi, cf.launchCampaignId, nguoiDungMoi());
+      if (r.status !== 200) return truot(`mong 200, nhận ${r.status}`);
+      return laLaunchUrl(r.body) ? dat() : truot('thân 200 phải có `launchUrl` dạng chuỗi');
+    },
+  },
+  {
+    ma: 'LAUNCH-2',
+    chieu: 'LAUNCH',
+    ten: 'mở launchUrl thành công ⇒ tạo session',
+    capNangLuc: null,
+    async chay(cf, goi) {
+      const tao = await taoLaunch(cf, goi, cf.launchCampaignId, nguoiDungMoi());
+      if (!laLaunchUrl(tao.body)) return truot(`không tạo được launch grant để thử (status ${tao.status})`);
+      const r = await moLaunch(goi, tao.body.launchUrl);
+      if (r.status !== 302) return truot(`mong 302, nhận ${r.status}`);
+      // 🔴 KHÔNG đọc tên/giá trị cookie — đó là chi tiết hiện thực. Chỉ cần MỘT session được cấp.
+      return r.headers['set-cookie'] ? dat() : truot('302 nhưng thiếu header `Set-Cookie` — không thấy session được cấp');
+    },
+  },
+  {
+    ma: 'LAUNCH-3',
+    chieu: 'LAUNCH',
+    ten: 'dùng lại launchUrl lần 2 ⇒ bị từ chối',
+    capNangLuc: null,
+    async chay(cf, goi) {
+      const tao = await taoLaunch(cf, goi, cf.launchCampaignId, nguoiDungMoi());
+      if (!laLaunchUrl(tao.body)) return truot(`không tạo được launch grant để thử (status ${tao.status})`);
+      const lan1 = await moLaunch(goi, tao.body.launchUrl);
+      if (lan1.status !== 302) return truot(`lượt tiêu thụ ĐẦU phải thành công (302) mới thử được lượt hai, nhận ${lan1.status}`);
+      const lan2 = await moLaunch(goi, tao.body.launchUrl);
+      return lan2.status === 401 ? dat() : truot(`mong 401 ở lượt dùng lại, nhận ${lan2.status}`);
+    },
+  },
+  {
+    ma: 'LAUNCH-4',
+    chieu: 'LAUNCH',
+    ten: 'launchUrl hết hạn ⇒ bị từ chối',
+    capNangLuc: null,
+    async chay(cf, goi) {
+      const tao = await taoLaunch(cf, goi, cf.launchCampaignId, nguoiDungMoi());
+      if (!laLaunchUrl(tao.body)) return truot(`không tạo được launch grant để thử (status ${tao.status})`);
+      // 🔴 CHỜ TTL THẬT (~61s) — KHÔNG có cách nào giả lập nhanh hơn ở hộp đen thuần HTTP (không DB).
+      //    Hết hạn/đã dùng/chưa từng tồn tại cố ý trả CÙNG một mã (§9 campaign-launch.md) nên đây là
+      //    cách trung thực DUY NHẤT để chứng minh riêng nhánh "hết hạn". Khai chi phí ở testing.md §1.5.
+      await new Promise((r) => setTimeout(r, 61_000));
+      const r = await moLaunch(goi, tao.body.launchUrl);
+      return r.status === 401 ? dat() : truot(`mong 401 sau khi hết hạn, nhận ${r.status}`);
+    },
+  },
+  {
+    ma: 'LAUNCH-5',
+    chieu: 'LAUNCH',
+    ten: 'launch code không hợp lệ ⇒ bị từ chối',
+    capNangLuc: null,
+    async chay(cf, goi) {
+      const r = await goi(`${cf.cuaNenTang}/launch?code=conf-khong-ton-tai-${randomUUID()}`, {
+        method: 'GET',
+        headers: {},
+        redirect: 'manual',
+      });
+      return r.status === 401 ? dat() : truot(`mong 401, nhận ${r.status}`);
+    },
+  },
+  {
+    ma: 'LAUNCH-6',
+    chieu: 'LAUNCH',
+    ten: 'campaign không cho phép tích hợp này ⇒ bị từ chối',
+    capNangLuc: null,
+    async chay(cf, goi) {
+      // Campaign bịa (không tồn tại HOẶC thuộc tenant khác — hai ca cố ý gộp một mã, xem error-codes.md)
+      // là phép đo đen thui duy nhất khả thi: bên đối ứng không tự tạo được campaign của tenant khác.
+      // 🔴 PHẢI là UUID hợp lệ (chỉ không tồn tại) — chuỗi có tiền tố rớt ở bước kiểm HÌNH DẠNG
+      //    tham số (400) trước khi tới được bước "không tồn tại" (404), đo được thật khi chạy.
+      const r = await taoLaunch(cf, goi, randomUUID(), nguoiDungMoi());
+      return r.status === 404 ? dat() : truot(`mong 404, nhận ${r.status}`);
+    },
+  },
+  {
+    ma: 'LAUNCH-7',
+    chieu: 'LAUNCH',
+    ten: 'code của campaign A không mở được campaign B ⇒ bị từ chối',
+    capNangLuc: null,
+    async chay(cf, goi) {
+      const tao = await taoLaunch(cf, goi, cf.launchCampaignId, nguoiDungMoi());
+      if (!laLaunchUrl(tao.body)) return truot(`không tạo được launch grant để thử (status ${tao.status})`);
+      // Gắn `campaignId` RÁC vào query — server CHỈ đọc `code`, mọi trường khác PHẢI bị bỏ qua (bất
+      // biến #9, campaign-launch.md §6.1). Không cần campaign B thật: redirect vẫn trỏ đúng campaign
+      // GỐC là đủ bằng chứng server chưa từng đọc trường bị gắn thêm.
+      const r = await moLaunch(goi, tao.body.launchUrl, { campaignId: `conf-campaign-khac-${randomUUID()}` });
+      if (r.status !== 302) return truot(`mong 302 (trường lạ bị bỏ qua, KHÔNG làm hỏng lượt tiêu thụ), nhận ${r.status}`);
+      const diaDiem = r.headers['location'] ?? '';
+      return diaDiem.includes(cf.launchCampaignId)
+        ? dat()
+        : truot(`redirect phải trỏ về campaign GỐC (${cf.launchCampaignId}), nhận Location: ${diaDiem}`);
+    },
+  },
+  {
+    ma: 'LAUNCH-8',
+    chieu: 'LAUNCH',
+    ten: 'externalUserId từ launch khớp session tạo ra ⇒ đúng người dùng',
+    capNangLuc: null,
+    async chay(cf, goi) {
+      // ⚠️ Session KHÔNG mang `externalUserId` (chỉ mang id chủ thể NỘI BỘ, cố ý — campaign-launch.md
+      //    §6.2), và hợp đồng đã công bố không có endpoint "whoami" nào để tra ngược. Phép đo tương
+      //    đương quan sát được bằng HTTP đen thui: 2 externalUserId KHÁC nhau ⇒ 2 session ĐỘC LẬP,
+      //    phân biệt được — không phải khẳng định ở mức claim. Xem testing.md §1.5 vì sao giới hạn ở đây.
+      const [taoA, taoB] = await Promise.all([
+        taoLaunch(cf, goi, cf.launchCampaignId, nguoiDungMoi()),
+        taoLaunch(cf, goi, cf.launchCampaignId, nguoiDungMoi()),
+      ]);
+      if (!laLaunchUrl(taoA.body) || !laLaunchUrl(taoB.body)) return truot('không tạo được cả hai launch grant để thử');
+      const [rA, rB] = await Promise.all([moLaunch(goi, taoA.body.launchUrl), moLaunch(goi, taoB.body.launchUrl)]);
+      if (rA.status !== 302 || rB.status !== 302) return truot(`cả hai lượt tiêu thụ phải 302, nhận ${rA.status}/${rB.status}`);
+      const cookieA = rA.headers['set-cookie'];
+      const cookieB = rB.headers['set-cookie'];
+      if (!cookieA || !cookieB) return truot('thiếu header `Set-Cookie` ở một trong hai lượt');
+      return cookieA !== cookieB ? dat() : truot('hai externalUserId KHÁC nhau nhưng nhận CÙNG session — nghi lẫn danh tính');
+    },
+  },
+];
+
+export const CA_LAUNCH: readonly Ca[] = LAUNCH;
+export const SO_CA_LAUNCH = LAUNCH.length;

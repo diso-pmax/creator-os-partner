@@ -1,4 +1,4 @@
-import { CA_BAT_BUOC, SO_CA_RA, SO_CA_VAO } from './cases';
+import { CA_BAT_BUOC, CA_LAUNCH, SO_CA_LAUNCH, SO_CA_RA, SO_CA_VAO } from './cases';
 import { ketQuaVaoCua, nangLucDaChungMinh, type CauHinh, type GoiHttp, type KetQuaCa } from './contract';
 
 /**
@@ -22,7 +22,9 @@ import { ketQuaVaoCua, nangLucDaChungMinh, type CauHinh, type GoiHttp, type KetQ
 
 /** Đường gọi THẬT. Tách khỏi bộ ca để ca tự nó kiểm được bằng phản hồi bơm tay. */
 export const goiThat: GoiHttp = async (duong, tuyChon) => {
-  const r = await fetch(duong, tuyChon);
+  // `redirect` mặc định 'follow' — giữ hành vi cũ cho VAO/RA (không bao giờ nhận 3xx). LAUNCH-2/3/6/7
+  // (§ `cases.ts`) truyền `'manual'` để đọc được status/Location/Set-Cookie của chính lượt redirect.
+  const r = await fetch(duong, { ...tuyChon, redirect: tuyChon.redirect ?? 'follow' });
   const text = await r.text();
   let body: unknown = null;
   try {
@@ -68,6 +70,45 @@ export async function chayHopChuan(cf: CauHinh, goi: GoiHttp = goiThat): Promise
   return kq;
 }
 
+/**
+ * Chạy 8 ca LAUNCH — TÁCH RIÊNG khỏi `chayHopChuan()` (xem `cases.ts` — cố ý không nằm trong
+ * `CA_BAT_BUOC`). Cùng khuôn try/catch-mỗi-ca: một ca ném = TRƯỢT, không làm rớt cả lượt.
+ *
+ * ⏱️ LAUNCH-4 chờ ~61s thật (TTL) — lượt gọi hàm này tốn hơn một phút, đã khai ở testing.md §1.5.
+ */
+export async function chayLaunch(cf: CauHinh, goi: GoiHttp = goiThat): Promise<KetQuaCa[]> {
+  const kq: KetQuaCa[] = [];
+  for (const ca of CA_LAUNCH) {
+    try {
+      const r = await ca.chay(cf, goi);
+      kq.push({ ma: ca.ma, chieu: ca.chieu, ten: ca.ten, capNangLuc: ca.capNangLuc, ...r });
+    } catch (e) {
+      kq.push({
+        ma: ca.ma,
+        chieu: ca.chieu,
+        ten: ca.ten,
+        capNangLuc: ca.capNangLuc,
+        dat: false,
+        vi: `ném: ${String((e as Error)?.message ?? e)}`,
+      });
+    }
+  }
+  return kq;
+}
+
+export function inBaoCaoLaunch(kq: readonly KetQuaCa[]): string {
+  const dong = (c: KetQuaCa) => `  ${c.dat ? '✅' : '❌'} [${c.ma}] ${c.ten}${c.dat ? '' : ` — ${c.vi}`}`;
+  const launch = kq.filter((c) => c.chieu === 'LAUNCH');
+  return [
+    `KÊNH LAUNCH — ${launch.filter((c) => c.dat).length}/${SO_CA_LAUNCH}`,
+    ...launch.map(dong),
+    '',
+    // ⚠️ Cố ý KHÔNG gọi đây là "cổng vào cửa" — cổng đó (ketQuaVaoCua) hiện chỉ đọc chiều VAO
+    //    (EVENT). Xem testing.md §1.5 vì sao LAUNCH chưa nối vào đó.
+    'Kết quả LAUNCH được báo cáo NHƯ chiều VÀO, nhưng CHƯA nối vào cổng lên-thật tự động ở trên.',
+  ].join('\n');
+}
+
 export function inBaoCao(kq: readonly KetQuaCa[]): string {
   const dong = (c: KetQuaCa) => `  ${c.dat ? '✅' : '❌'} [${c.ma}] ${c.ten}${c.dat ? '' : ` — ${c.vi}`}`;
   const vao = kq.filter((c) => c.chieu === 'VAO');
@@ -105,17 +146,24 @@ function tuMoiTruong(): CauHinh {
     diemCuoiPhucHoi: process.env.CONF_RECOVERY_URL || undefined,
     // Bí mật kênh PHỤC HỒI. Vắng ⇒ chiều RA gọi không ký (xem `hoi()` ở `cases.ts`).
     recoverySecret: process.env.CONF_RECOVERY_SECRET || undefined,
+    // LAUNCH là kênh danh tính HIỆN HÀNH (README § Required order) — BẮT BUỘC như EVENT, không có
+    // nhánh "để trống thì bỏ qua" như RECOVERY.
+    launchSecret: can('CONF_LAUNCH_SECRET'),
+    launchCampaignId: can('CONF_LAUNCH_CAMPAIGN_ID'),
   };
 }
 
 // Chạy trực tiếp thì thi hành; `import` thì không. Giữ file vừa là thư viện vừa là lệnh.
 if (process.argv[1] && process.argv[1].endsWith('run.ts')) {
-  chayHopChuan(tuMoiTruong())
-    .then((kq) => {
+  const cf = tuMoiTruong();
+  Promise.all([chayHopChuan(cf), chayLaunch(cf)])
+    .then(([kq, kqLaunch]) => {
       console.log(inBaoCao(kq));
-      // 🔴 Mã thoát KHÁC 0 khi có ca trượt — để đường tự động dùng được nó làm cổng. "Không có ô gần
-      //    đạt" nghĩa là một ca trượt cũng đủ để lượt này không phải một lượt pass.
-      process.exit(kq.every((c) => c.dat) ? 0 : 1);
+      console.log('');
+      console.log(inBaoCaoLaunch(kqLaunch));
+      // 🔴 Mã thoát KHÁC 0 khi có ca trượt Ở BẤT KỲ bộ nào — "không có ô gần đạt" áp cho CẢ HAI.
+      const tatCa = [...kq, ...kqLaunch];
+      process.exit(tatCa.every((c) => c.dat) ? 0 : 1);
     })
     .catch((e) => {
       console.error(`KHÔNG chạy được: ${String((e as Error)?.message ?? e)}`);

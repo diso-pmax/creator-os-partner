@@ -23,8 +23,15 @@
 /** Ba năng lực phục hồi — tập ĐÓNG của nền tảng, khớp enum `RecoveryCapability` ở CSDL. */
 export type NangLuc = 'QUERY_WINDOW' | 'REDELIVER_BY_ID' | 'QUERY_RESOURCE';
 
-/** Chiều của một ca. Hai chiều đo hai thứ KHÁC hẳn nhau — xem `README.md`. */
-export type Chieu = 'VAO' | 'RA';
+/**
+ * Chiều của một ca — xem `README.md`.
+ *
+ * 🔴 **`LAUNCH` KHÔNG phải `VAO`, dù cùng "cửa của chúng tôi".** `VAO` nuôi thẳng cổng vào cửa
+ * (`ketQuaVaoCua()` dưới đây) — gộp LAUNCH vào đó là âm thầm đổi ý nghĩa một cổng đã đóng băng.
+ * `LAUNCH` là một trục ĐỘC LẬP thứ ba: `ketQuaVaoCua`/`nangLucDaChungMinh` CỐ Ý không đọc nó,
+ * `inBaoCao()` in nó ở mục báo cáo riêng.
+ */
+export type Chieu = 'VAO' | 'RA' | 'LAUNCH';
 
 export type KetQuaCa = {
   ma: string;
@@ -47,7 +54,19 @@ export type KetQuaCa = {
 export type PhanHoi = { status: number; body: unknown; headers: Record<string, string> };
 export type GoiHttp = (
   duong: string,
-  tuyChon: { method: string; headers: Record<string, string>; body?: string },
+  tuyChon: {
+    method: string;
+    headers: Record<string, string>;
+    body?: string;
+    /**
+     * ⭐ Mặc định `'follow'` — giữ hành vi cũ cho mọi ca VÀO/RA hiện có (chúng không bao giờ nhận
+     * `3xx`). Ca LAUNCH consume (`GET /launch`) PHẢI dùng `'manual'` để đọc được `status`/`Location`/
+     * `Set-Cookie` của chính lượt redirect — theo sau nó nhảy sang host cổng thưởng, nơi bộ kiểm của
+     * đối tác (chạy trên máy họ) thường không với tới được. Thực nghiệm xác nhận `fetch` của Node
+     * (`undici`) KHÔNG lọc các header này ở chế độ `manual` như trình duyệt vẫn làm (#1060).
+     */
+    redirect?: 'follow' | 'manual';
+  },
 ) => Promise<PhanHoi>;
 
 export type CauHinh = {
@@ -69,6 +88,14 @@ export type CauHinh = {
    * ⚠️ Vắng ⇒ vẫn chạy, chỉ thiếu ba tiêu đề — để bên đang dựng dở không bị chặn đường.
    */
   recoverySecret?: string;
+  /**
+   * Mã nhận dạng + bí mật KÊNH LAUNCH — bắt buộc, khác `RECOVERY` ở chỗ KHÔNG có nhánh "để trống thì
+   * bỏ qua": LAUNCH là kênh danh tính hiện hành, ngang hàng EVENT (README § Required order), không
+   * phải năng lực tuỳ chọn.
+   */
+  launchSecret: string;
+  /** Campaign THẬT, đang `active`, thuộc tenant của tích hợp — 8 ca LAUNCH launch đúng campaign này. */
+  launchCampaignId: string;
 };
 
 /** Một ca: thuần hàm, nhận cấu hình + đường gọi, trả kết quả. Không trạng thái toàn cục. */

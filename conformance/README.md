@@ -12,8 +12,15 @@ CONF_EVENT_SECRET=bi-mat-kenh-su-kien \
 CONF_EVENT_TYPE=ORDER_COMPLETED \
 CONF_RECOVERY_URL=https://he-thong-cua-ban/api/recovery \
 CONF_RECOVERY_SECRET=bi-mat-kenh-phuc-hoi \
+CONF_LAUNCH_SECRET=bi-mat-kenh-launch \
+CONF_LAUNCH_CAMPAIGN_ID=camp-that-dang-active \
   npx tsx run.ts
 ```
+
+🔑 **`CONF_LAUNCH_SECRET` và `CONF_LAUNCH_CAMPAIGN_ID` là BẮT BUỘC** — khác `CONF_RECOVERY_*`, LAUNCH
+không có nhánh "để trống thì bỏ qua". Đây là kênh danh tính/session **hiện hành** (xem
+`campaign-launch.md`), ngang hàng EVENT. `CONF_LAUNCH_CAMPAIGN_ID` phải là một campaign **thật**, đang
+`active`, thuộc tenant của tích hợp bạn đang thử.
 
 🔑 **`CONF_RECOVERY_SECRET` là bí mật KÊNH PHỤC HỒI** — thứ chúng tôi cấp riêng để **chúng tôi ký** khi
 gọi sang bạn *(khuôn `PartnerRecoverySignatureV1`, hợp đồng §5.6)*. Đặt nó thì bảy ca chiều RA gửi kèm
@@ -99,6 +106,26 @@ REDELIVER_BY_ID  gửi lại          ❌           ✅     ← phải biết th
 
 🔒 **Một năng lực được công nhận chỉ khi MỌI ca cấp nó đều đạt.** Một ca trượt là năng lực đó rớt —
 không có ô *"gần đạt"*.
+
+## 8 ca LAUNCH — chạy riêng, báo cáo riêng
+
+`LAUNCH-1..8` kiểm kênh Campaign Launch (`campaign-launch.md`) — hai lượt gọi `POST
+.../campaigns/:id/launch` + `GET /launch`. Khác VÀO/RA, chúng **không** đếm vào `14 ca bắt buộc` ở
+trên và không ảnh hưởng cổng vào cửa `integration_conformance` — kết quả in ở một mục báo cáo riêng.
+
+| Mã | Ca | Mong đợi |
+|---|---|---|
+| `LAUNCH-1` | campaign + externalUserId hợp lệ | `200` + `launchUrl` |
+| `LAUNCH-2` | mở launchUrl thành công | tạo session |
+| `LAUNCH-3` | dùng lại launchUrl lần 2 | bị từ chối |
+| `LAUNCH-4` | launchUrl hết hạn | bị từ chối |
+| `LAUNCH-5` | launch code không hợp lệ | bị từ chối |
+| `LAUNCH-6` | campaign không cho phép tích hợp này | bị từ chối |
+| `LAUNCH-7` | code của campaign A không mở được campaign B | bị từ chối |
+| `LAUNCH-8` | externalUserId từ launch khớp session tạo ra | đúng người dùng |
+
+⏱️ **`LAUNCH-4` chờ ~61 giây thật** (TTL của Launch Grant) — hết hạn/đã dùng/không tồn tại cố ý trả
+cùng một mã lỗi (§9, `campaign-launch.md`), nên không có cách nào giả lập nhanh hơn ở hộp đen HTTP.
 
 ## Kết quả của bạn KHÔNG tự vào sổ của chúng tôi
 
