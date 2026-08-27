@@ -137,13 +137,14 @@ user's WebView. The browser/WebView does the rest.
 **What we do:** consume the code atomically (exactly one success even under concurrent attempts —
 §6, item 7), resolve the user's identity and the target campaign **from the Launch Grant record itself**
 — never from anything the request carries — establish a Creator-OS session, set the session cookie, and
-redirect to the campaign.
+redirect to the **root of the Reward webview**. The destination carries no `campaignId`: the webview asks
+the server which campaign is running for the tenant on the ticket (#1188).
 
 **Success:**
 
 ```jsonc
 HTTP/1.1 302 Found
-Location: https://<reward-portal>/campaigns/<campaignId>
+Location: https://<reward-portal>/
 Set-Cookie: __Host-player_session=<JWT>; HttpOnly; Secure; SameSite=Lax   // expires in 8 hours
 ```
 

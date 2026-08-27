@@ -179,13 +179,14 @@ dùng. Trình duyệt/WebView làm phần còn lại.
 **Việc chúng tôi làm:** tiêu thụ code atomic (đúng một lần thành công dù có nhiều lượt gọi đồng thời —
 §6, mục 7), resolve danh tính người dùng và campaign đích **từ chính bản ghi Launch Grant** — không bao
 giờ từ bất cứ gì request mang theo — establish một Creator-OS session, set cookie phiên, và redirect tới
-campaign.
+**gốc webview Thưởng**. Đích không mang `campaignId`: webview tự hỏi máy chủ chiến dịch nào đang chạy
+cho đơn vị trong vé (#1188).
 
 **Thành công:**
 
 ```jsonc
 HTTP/1.1 302 Found
-Location: https://<reward-portal>/campaigns/<campaignId>
+Location: https://<reward-portal>/
 Set-Cookie: __Host-player_session=<JWT>; HttpOnly; Secure; SameSite=Lax   // hết hạn sau 8 giờ
 ```
 
