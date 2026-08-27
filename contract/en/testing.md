@@ -252,12 +252,13 @@ printf 'evt-1\nevt-2\nevt-3' | openssl dgst -sha256 -r | cut -d' ' -f1
 
 ## 3. Key rotation
 
-Multiple secrets are **simultaneously valid** during rotation. You can switch to a new secret at any
+Derive the new channel key from the same master and the exact version returned by Creator-OS; see
+[credential-derivation.md](./credential-derivation.md). Multiple versions are **simultaneously valid** during rotation. You can switch to a new secret at any
 time, with **zero dropped requests** — this is not a scheduled cutover.
 
 | Event | What you see |
 |---|---|
-| we issue a new secret | both the old and new secret verify successfully |
+| we return a new channel version `v` | keys derived with both the old and new version verify successfully |
 | you switch to the new secret | nothing changes on our side |
 | we revoke the old secret | takes effect **IMMEDIATELY**, no grace period |
 

@@ -24,15 +24,15 @@ kênh độc lập nối hệ thống của bạn với chúng tôi:
 | **EVENT** | "người dùng vừa **làm gì**?" | [event-ingestion.md](./event-ingestion.md) |
 | **LAUNCH** *(Campaign Launch)* | "người vừa mở ứng dụng **là ai**, cho campaign nào?" | [campaign-launch.md](./campaign-launch.md) |
 
-Cả hai kênh dùng chung một `accessKey`, nhưng mỗi kênh có **Secret Key riêng** — không bao giờ dùng
-chung.
+Cả hai kênh dùng chung một `accessKey`. Bạn giữ một `masterSecret` và dẫn xuất khoá riêng cho từng
+kênh theo [`IntegrationCredentialDerivationV1`](./credential-derivation.md).
 
 ---
 
 ## Creator-OS cung cấp cho bạn
 
 - **Một Access Key** (`accessKey`) — dùng chung cho mọi kênh, không phân biệt hoa/thường.
-- **Ba Secret Key riêng** — mỗi kênh một Secret Key khác nhau, **không thể thay thế cho nhau**:
+- **Một Master Secret** (`masterSecret`) — chỉ hiện một lần. Từ đó bạn dẫn xuất khoá riêng từng kênh:
   1. Secret Key kênh **EVENT** — chúng tôi dùng để verify chữ ký sự kiện bạn gửi.
   2. Secret Key kênh **LAUNCH** — chúng tôi dùng để verify chữ ký request Campaign Launch bạn gửi (xem [campaign-launch.md](./campaign-launch.md)).
   3. Secret Key kênh **RECOVERY** *(chỉ cấp nếu bạn dựng đường phục hồi)* — để **chúng tôi** ký khi gọi sang bạn.
@@ -126,6 +126,7 @@ gửi lại của kênh này cho kênh kia.
 | [recovery.md](./recovery.md) | Năng lực đối soát và lấp lại (tuỳ chọn) |
 | [error-codes.md](./error-codes.md) | Tra cứu mã lỗi hợp nhất cho mọi kênh |
 | [testing.md](./testing.md) | Bộ kiểm hợp chuẩn + checklist trước khi lên thật |
+| [credential-derivation.md](./credential-derivation.md) | Hợp đồng HKDF, version, vector kiểm thử và xoay khoá |
 | [changelog.md](./changelog.md) | Lịch sử phiên bản |
 
 Các tài liệu trên là **hợp đồng chung** — áp dụng cho mọi đối tác, kể cả **MSHT**, đơn vị dựng đúng

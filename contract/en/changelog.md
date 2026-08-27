@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.3 — 2026-08-26
+
+- Partners now keep one `masterSecret` and derive isolated channel keys through
+  [`IntegrationCredentialDerivationV1`](./credential-derivation.md).
+- Per-channel rotation explicitly publishes the new version; old and new versions overlap until revoke.
+- Added a machine-readable HKDF test vector shared with the Creator-OS backend tests.
+
 ## 1.2 — 2026-08-25
 
 **AUTH channel removed.** No partner ever integrated it in production, so this carries zero migration

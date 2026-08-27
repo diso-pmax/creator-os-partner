@@ -247,12 +247,13 @@ printf 'evt-1\nevt-2\nevt-3' | openssl dgst -sha256 -r | cut -d' ' -f1
 
 ## 3. Xoay khoá
 
-Nhiều secret **cùng hợp lệ** trong lúc xoay. Bạn đổi sang secret mới lúc nào cũng được, **không rớt
+Dẫn xuất khoá kênh mới từ cùng master và đúng version Creator-OS trả về; xem
+[credential-derivation.md](./credential-derivation.md). Nhiều version **cùng hợp lệ** trong lúc xoay. Bạn đổi sang secret mới lúc nào cũng được, **không rớt
 request nào** — đây không phải một lượt cutover theo lịch.
 
 | Sự kiện | Bạn thấy |
 |---|---|
-| chúng tôi cấp secret mới | cả secret cũ lẫn mới đều verify thành công |
+| chúng tôi trả version `v` mới | khoá dẫn xuất bằng cả version cũ lẫn mới đều verify thành công |
 | bạn chuyển sang secret mới | không có gì đổi phía chúng tôi |
 | chúng tôi thu hồi secret cũ | có hiệu lực **NGAY LẬP TỨC**, không có ân hạn |
 

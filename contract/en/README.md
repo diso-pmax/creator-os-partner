@@ -27,14 +27,15 @@ independent channels connect your system to ours:
 | **EVENT** | "What did the user just do?" | [event-ingestion.md](./event-ingestion.md) |
 | **LAUNCH** *(Campaign Launch)* | "Who just opened the app, for which campaign?" | [campaign-launch.md](./campaign-launch.md) |
 
-Both channels use the same `accessKey`, but each has its **own Secret Key** — never shared.
+Both channels use the same `accessKey`. You keep one `masterSecret` and derive an isolated key for each
+channel with [`IntegrationCredentialDerivationV1`](./credential-derivation.md).
 
 ---
 
 ## What Creator-OS provides you
 
 - **One Access Key** (`accessKey`) — shared across all channels, case-insensitive.
-- **Three separate Secret Keys** — one per channel, never interchangeable:
+- **One Master Secret** (`masterSecret`) — displayed once. You derive separate channel keys from it:
   1. **EVENT** Secret Key — we use it to verify the signature on events you send.
   2. **LAUNCH** Secret Key — we use it to verify the signature on Campaign Launch requests you send (see [campaign-launch.md](./campaign-launch.md)).
   3. **RECOVERY** Secret Key *(only if you build a recovery endpoint)* — **we** use it to sign requests when we call you.
@@ -129,6 +130,7 @@ channel's retry logic to the other.
 | [recovery.md](./recovery.md) | Optional reconciliation and backfill capability |
 | [error-codes.md](./error-codes.md) | Consolidated error reference across all channels |
 | [testing.md](./testing.md) | Conformance test suite + production checklist |
+| [credential-derivation.md](./credential-derivation.md) | HKDF contract, versions, test vectors, and rotation |
 | [changelog.md](./changelog.md) | Version history |
 
 The documents above are the **generic contract** — they apply to any partner, including **MSHT**, which

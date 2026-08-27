@@ -3,6 +3,13 @@
 *(bản dịch của [en/changelog.md](../en/changelog.md) — bản tiếng Anh là nguồn chốt, lệch thì bản tiếng
 Anh thắng)*
 
+## 1.3 — 2026-08-26
+
+- Đối tác nay giữ một `masterSecret` và dẫn xuất khoá riêng từng kênh theo
+  [`IntegrationCredentialDerivationV1`](./credential-derivation.md).
+- Xoay từng kênh công bố tường minh version mới; version cũ và mới chồng lấn tới lúc thu hồi.
+- Thêm vector HKDF máy đọc được, dùng chung với bộ test backend Creator-OS.
+
 ## 1.2 — 2026-08-25
 
 **Đã gỡ bỏ kênh AUTH.** Chưa partner nào từng tích hợp nó trong production, nên việc này chi phí
