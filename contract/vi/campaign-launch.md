@@ -46,8 +46,19 @@ của người dùng.
 
 ## 2. Điều kiện tiên quyết
 
-- Bạn có `accessKey` và một **LAUNCH** Secret Key (xem [README.md](./README.md)). Đây là secret riêng,
-  độc lập với secret EVENT của bạn — xem §3.
+- Bạn có `accessKey` và **`masterSecret`**, rồi **tự dẫn xuất** khoá kênh **LAUNCH** từ đó theo
+  [credential-derivation.md](./credential-derivation.md):
+
+  ```text
+  LAUNCH_KEY = HKDF-SHA256( ikm  = base64url_decode(masterSecret),
+                            salt = rỗng,
+                            info = "integration:channel:LAUNCH:v<VERSION>",
+                            len  = 32 )   → base64url không padding
+  ```
+
+  🔴 **Chúng tôi KHÔNG phát riêng một "LAUNCH Secret Key"** — bạn chỉ nhận `masterSecret` một lần, và
+  khoá từng kênh do bạn dẫn xuất. Khoá LAUNCH khác khoá EVENT vì chuỗi `info` khác, không phải vì
+  chúng tôi gửi hai bí mật.
 - Máy chủ của bạn tính được HMAC-SHA256 và biết định danh bạn dùng cho người dùng này ở kênh EVENT
   (`externalUserId`) — xem §7 vì sao giá trị này quan trọng ở đây nữa.
 - Campaign bạn định launch đã tồn tại phía chúng tôi và đang ở trạng thái launch được (`active`, trong
@@ -65,22 +76,56 @@ mỗi secret.
 | Header Timestamp | `X-Timestamp` — **giây** kể từ epoch |
 | Header Signature | `X-Signature` |
 | Thuật toán | HMAC-SHA256 |
-| Secret | **LAUNCH** channel Secret Key — giá trị khác secret EVENT của bạn, cùng `accessKey` |
+| Secret | khoá kênh **LAUNCH** bạn **tự dẫn xuất** từ `masterSecret` (§2). Khác khoá EVENT vì chuỗi `info` khác, cùng `accessKey` |
 | Encoding | hex chữ thường, tiền tố `sha256=` |
 | Chuỗi canonical | `<X-Timestamp>` + `"."` + `<thân request thô, đúng byte>` |
 | Sai số timestamp | ±5 phút |
 
 ```text
 canonical_string = timestamp + "." + raw_body
-signature        = "sha256=" + hex(HMAC_SHA256(LAUNCH_SECRET, canonical_string))
+signature        = "sha256=" + hex(HMAC_SHA256(LAUNCH_KEY, canonical_string))
 ```
 
 Điều này chỉ áp cho **bước 1** (`POST .../launch`). Bước 2 (`GET /launch`) do WebView gọi, không phải
 máy chủ của bạn, và không mang HMAC — xem §5 vì sao điều đó vẫn an toàn.
 
-🔒 LAUNCH Secret Key PHẢI chỉ sống trên máy chủ của bạn — cùng luật với mọi secret channel khác.
-🔒 KHÔNG tái dùng secret EVENT ở đây, dù cả hai cùng chung một `accessKey`. Lộ secret LAUNCH chỉ cấp
-năng lực yêu cầu launch — không bao giờ cấp quyền bắn event.
+**Ví dụ chạy được:**
+
+```bash
+API='https://<host của môi trường bạn dùng>/api/v1'   # xem bảng môi trường ở README.md
+ACCESS_KEY='<accessKey chúng tôi cấp>'
+MASTER_SECRET='<masterSecret — base64url 43 ký tự>'
+LAUNCH_VERSION=1
+CAMPAIGN_ID='<campaignId chúng tôi cấp>'
+
+LAUNCH_KEY=$(node -e '
+  const { hkdfSync } = require("node:crypto");
+  const ikm  = Buffer.from(process.argv[1], "base64url");
+  const info = Buffer.from(`integration:channel:LAUNCH:v${process.argv[2]}`, "utf8");
+  process.stdout.write(
+    Buffer.from(hkdfSync("sha256", ikm, Buffer.alloc(0), info, 32)).toString("base64url"));
+' "$MASTER_SECRET" "$LAUNCH_VERSION")
+
+BODY='{"externalUserId":"usr_4471"}'
+TS=$(date +%s)                                        # epoch GIÂY
+SIG="sha256=$(printf '%s.%s' "$TS" "$BODY" \
+      | openssl dgst -sha256 -hmac "$LAUNCH_KEY" -r | cut -d' ' -f1)"
+
+curl -sS -X POST "$API/campaigns/$CAMPAIGN_ID/launch" \
+  -H 'Content-Type: application/json' \
+  -H "X-API-Key:   $ACCESS_KEY" \
+  -H "X-Timestamp: $TS" \
+  -H "X-Signature: $SIG" \
+  --data-raw "$BODY"
+```
+
+⚠️ `$LAUNCH_KEY` là chuỗi base64url — dùng **nguyên văn** làm khoá HMAC, KHÔNG giải base64 lần nữa.
+
+🔒 `masterSecret` và mọi khoá dẫn xuất PHẢI chỉ sống trên máy chủ của bạn — không bao giờ trong ứng
+dụng di động, trình duyệt, hay kho mã nguồn.
+🔒 KHÔNG dùng khoá EVENT để ký lượt launch, dù cả hai dẫn xuất từ cùng một `masterSecret`. Chúng khác
+nhau là **có chủ ý**: lộ khoá LAUNCH chỉ cấp năng lực yêu cầu launch — không bao giờ cấp quyền bắn
+event.
 
 ## 4. Bước 1 — Tạo Launch Grant
 
@@ -249,8 +294,8 @@ phía chúng tôi thay vì suy ra nguyên nhân từ response HTTP.
 
 - [ ] Chữ ký trên `POST .../launch` khớp [testing.md](./testing.md) khi bộ vector hợp chuẩn kênh LAUNCH
       được công bố
-- [ ] LAUNCH Secret Key sống trên **máy chủ**, khác secret EVENT của bạn, và không dùng chung code ký
-      với kênh EVENT (§3)
+- [ ] `masterSecret` sống trên **máy chủ**; khoá LAUNCH được **dẫn xuất** từ nó (§2), và **không** dùng
+      chung code ký với kênh EVENT (§3)
 - [ ] `POST .../launch` chỉ được gọi từ backend của bạn — không bao giờ từ mobile app hay trình duyệt
 - [ ] `externalUserId` bạn gửi là **đúng giá trị** bạn dùng ở kênh EVENT cho người dùng này
 - [ ] Bạn mở `launchUrl` trong WebView **ngay lập tức** — nó hết hạn 60 giây sau khi phát

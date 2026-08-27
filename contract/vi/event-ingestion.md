@@ -57,8 +57,25 @@ soát).
 
 ```text
 canonical_string = timestamp + "." + raw_body
-signature        = "sha256=" + hex(HMAC_SHA256(EVENT_SECRET, canonical_string))
+signature        = "sha256=" + hex(HMAC_SHA256(EVENT_KEY, canonical_string))
 ```
+
+🔴 **`EVENT_KEY` KHÔNG phải thứ chúng tôi phát cho bạn.** Bạn nhận **một** `masterSecret` *(hiện đúng
+một lần lúc chúng tôi cấp credential)* và **tự dẫn xuất** khoá cho từng kênh:
+
+```text
+EVENT_KEY = HKDF-SHA256( ikm  = base64url_decode(masterSecret),
+                         salt = rỗng,
+                         info = "integration:channel:EVENT:v<VERSION>",
+                         len  = 32 )   → mã hoá base64url không padding
+```
+
+Bản hợp đồng đầy đủ, cách xoay khoá, và **vector kiểm thử để bạn đối chiếu**:
+[credential-derivation.md](./credential-derivation.md). Chạy khớp vector là code dẫn xuất của bạn
+đúng — khỏi đoán.
+
+⚠️ `<VERSION>` là số version **của chính kênh đó**, chúng tôi báo khi cấp credential *(thường bắt đầu
+từ `1`)*. Xoay khoá làm số này tăng, và bạn phải đổi theo — nó không tự suy ra được.
 
 `raw_body` PHẢI là **đúng dãy byte** truyền trên đường dây — không phải bản serialize lại từ object đã
 parse. Đây là lỗi tích hợp phổ biến nhất (xem §3.1).
@@ -93,15 +110,26 @@ logging), hãy chắc nó không chạm vào thân request sau khi bạn đã k�
 ### 3.2 Ví dụ đầy đủ
 
 ```bash
-API='https://<sandbox-host-của-bạn>/api/v1'
-ACCESS_KEY='AK-DEMO-001'
-EVENT_SECRET='whsec_demo_0123456789abcdef'
+API='https://<host của môi trường bạn dùng>/api/v1'   # xem bảng môi trường ở README.md
+ACCESS_KEY='<accessKey chúng tôi cấp>'
+MASTER_SECRET='<masterSecret — base64url 43 ký tự, hiện MỘT LẦN>'
+EVENT_VERSION=1                                       # version kênh EVENT, chúng tôi báo khi cấp
+
+# ⬇️ DẪN XUẤT khoá kênh EVENT từ masterSecret — KHÔNG dùng thẳng masterSecret để ký.
+EVENT_KEY=$(node -e '
+  const { hkdfSync } = require("node:crypto");
+  const ikm  = Buffer.from(process.argv[1], "base64url");     // 43 ký tự → 32 byte
+  const info = Buffer.from(`integration:channel:EVENT:v${process.argv[2]}`, "utf8");
+  process.stdout.write(
+    Buffer.from(hkdfSync("sha256", ikm, Buffer.alloc(0), info, 32)).toString("base64url"));
+' "$MASTER_SECRET" "$EVENT_VERSION")
 
 BODY='{"specversion":"1.0","eventId":"evt-88421","externalUserId":"12345","type":"ORDER_COMPLETED","occurredAt":"2026-08-14T09:12:33Z","confidence":"SERVER_OBSERVED","payload":{"orderId":"SO-99881","amountMinor":250000000,"currency":"VND"}}'
-TS=1786698753
+TS=$(date +%s)          # epoch GIÂY — không phải mili-giây
 
+# ⚠️ `$EVENT_KEY` là chuỗi base64url. Dùng NGUYÊN VĂN làm khoá HMAC — KHÔNG giải base64 lần nữa.
 SIG="sha256=$(printf '%s.%s' "$TS" "$BODY" \
-      | openssl dgst -sha256 -hmac "$EVENT_SECRET" -r | cut -d' ' -f1)"
+      | openssl dgst -sha256 -hmac "$EVENT_KEY" -r | cut -d' ' -f1)"
 # → sha256=ae00dc858385fdb65061fda5da1809772f8f602f5d653052e7672516c4d59176
 
 curl -sS -D- "$API/integrations/events" \
@@ -128,9 +156,17 @@ function signEvent(secret, rawBody, timestampSeconds) {
   return 'sha256=' + crypto.createHmac('sha256', secret).update(base).digest('hex');
 }
 
+// Dẫn xuất MỘT LẦN lúc khởi động, giữ trong bộ nhớ — đừng dẫn xuất lại mỗi request.
+function deriveChannelKey(masterSecret, channel, version) {
+  const ikm  = Buffer.from(masterSecret, 'base64url');            // 43 ký tự → 32 byte
+  const info = Buffer.from(`integration:channel:${channel}:v${version}`, 'utf8');
+  return Buffer.from(crypto.hkdfSync('sha256', ikm, Buffer.alloc(0), info, 32)).toString('base64url');
+}
+const EVENT_KEY = deriveChannelKey(MASTER_SECRET, 'EVENT', EVENT_VERSION);
+
 const body = JSON.stringify(event);            // serialize MỘT LẦN
 const ts   = Math.floor(Date.now() / 1000);
-const sig  = signEvent(EVENT_SECRET, body, ts);
+const sig  = signEvent(EVENT_KEY, body, ts);   // ⚠️ khoá KÊNH, không phải masterSecret
 await fetch(`${API}/integrations/events`, {
   method: 'POST',
   headers: { 'Content-Type': 'application/json', 'X-API-Key': ACCESS_KEY, 'X-Timestamp': String(ts), 'X-Signature': sig },

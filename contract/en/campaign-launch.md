@@ -45,7 +45,10 @@ only two responsibilities are the POST call and opening `launchUrl` in the user'
 ## 2. Prerequisites
 
 - You have an `accessKey` and a **LAUNCH** Secret Key (see [README.md](./README.md)). This is a
-  separate secret, independent of your EVENT secret — see §3.
+  🔴 **We do NOT issue a separate "LAUNCH Secret Key."** You derive it from `masterSecret`:
+  `LAUNCH_KEY = HKDF-SHA256(base64url_decode(masterSecret), "", "integration:channel:LAUNCH:v<VERSION>", 32)`
+  → base64url, no padding. See [credential-derivation.md](./credential-derivation.md). It differs from
+  your EVENT key because the `info` string differs — not because we send two secrets.
 - Your server can compute HMAC-SHA256 and knows the identifier you use for this user on the EVENT
   channel (`externalUserId`) — see §7 for why the same value matters here too.
 - The campaign you intend to launch already exists on our side and is in a launchable state (`active`,
@@ -70,13 +73,15 @@ scheme documented in [event-ingestion.md §3](./event-ingestion.md#3-authenticat
 
 ```text
 canonical_string = timestamp + "." + raw_body
-signature        = "sha256=" + hex(HMAC_SHA256(LAUNCH_SECRET, canonical_string))
+signature        = "sha256=" + hex(HMAC_SHA256(LAUNCH_KEY, canonical_string))
 ```
 
 This only applies to **step 1** (`POST .../launch`). Step 2 (`GET /launch`) is called by the WebView,
 not your server, and carries no HMAC — see §5 for why that is safe.
 
-🔒 The LAUNCH Secret Key MUST live on your server only — the same rule as every other channel secret.
+⚠️ `LAUNCH_KEY` is a base64url string — use it **as-is** as the HMAC key; do NOT base64-decode it again.
+
+🔒 `masterSecret` and every derived key MUST live on your server only.
 🔒 Do NOT reuse the EVENT secret here, even though both share the same `accessKey`. A compromised LAUNCH
 secret only grants the capability to request launches — it never grants event submission.
 

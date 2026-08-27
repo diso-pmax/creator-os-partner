@@ -44,7 +44,9 @@ channel with [`IntegrationCredentialDerivationV1`](./credential-derivation.md).
 
 ## What you provide Creator-OS
 
-- A server capable of computing HMAC-SHA256 signatures (used on every channel, each with its own secret).
+- A server that can compute **HKDF-SHA256** *(to derive each channel key from `masterSecret`)* and
+  **HMAC-SHA256** *(to sign)*. Each channel has its own key, but **you derive them** — we only issue
+  the `masterSecret`. See [credential-derivation.md](./credential-derivation.md).
 - **EVENT channel**: business events from your system (orders, UI actions) via `POST /api/v1/integrations/events`, called **from your server**.
 - **LAUNCH channel**: a request to bootstrap a session for an already-known user, via `POST /api/v1/campaigns/:campaignId/launch`, called **from your server** — see [campaign-launch.md](./campaign-launch.md).
 - *(optional)* A recovery endpoint on your side — so we can ask you what you sent when we need to reconcile or backfill.

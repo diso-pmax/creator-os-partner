@@ -3,6 +3,27 @@
 *(bản dịch của [en/changelog.md](../en/changelog.md) — bản tiếng Anh là nguồn chốt, lệch thì bản tiếng
 Anh thắng)*
 
+## 1.3.1 — 2026-08-27
+
+Bản 1.3 công bố mô hình `masterSecret` ở `README` và `changelog`, nhưng **hai tài liệu bạn thật sự
+code theo** thì chưa đổi: `event-ingestion.md` và `campaign-launch.md` vẫn còn ví dụ dùng một bí mật
+rời (`whsec_…`) và không trỏ sang [credential-derivation.md](./credential-derivation.md). Đợt này vá
+đúng chỗ đó — **không đổi giao thức, chỉ đổi tài liệu**.
+
+- `event-ingestion.md` · `campaign-launch.md` — ví dụ nay **dẫn xuất khoá kênh từ `masterSecret`**,
+  cả bản `bash` lẫn `node`. Bỏ mọi ví dụ dùng bí mật rời.
+- `campaign-launch.md` §2 — nói thẳng: **chúng tôi KHÔNG phát riêng "LAUNCH Secret Key"**. Khoá
+  LAUNCH khác khoá EVENT vì chuỗi `info` khác, không phải vì có hai bí mật được gửi.
+- `credential-derivation.md` — thêm đoạn **đối chiếu vector trong 10 giây**, đoạn lấy khoá cho từng
+  kênh, và bảng **bốn lỗi tích hợp hay gặp** *(giải nhầm `channelKey` · nhầm base64 với base64url ·
+  `CHANNEL` viết thường · nhầm `I`/`l`/`1` khi chép tay)*. Cả bốn đều ra **cùng một `401`**.
+- `README.md` — sửa câu *"mỗi kênh một secret riêng"* thành *"mỗi kênh một khoá riêng, **do bạn dẫn
+  xuất**"*, và nói rõ host của môi trường là thứ chúng tôi báo khi bàn giao.
+- `testing.md` + bộ kiểm hợp chuẩn — nhận **`CONF_MASTER_SECRET`** và tự dẫn xuất khoá từng kênh.
+  Thêm `CONF_*_VERSION` *(mặc định `1`)*. Vẫn nhận `CONF_*_SECRET` rời cho tích hợp chưa cấp lại
+  credential; khai tường minh thì rời **thắng**. Bộ kiểm nay **in ra nguồn của từng khoá** ở dòng
+  đầu — đọc dòng đó loại được hai nguyên nhân mà mã `401` không phân biệt.
+
 ## 1.3 — 2026-08-26
 
 - Đối tác nay giữ một `masterSecret` và dẫn xuất khoá riêng từng kênh theo

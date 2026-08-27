@@ -1,5 +1,27 @@
 # Changelog
 
+## 1.3.1 — 2026-08-27
+
+1.3 announced the `masterSecret` model in `README` and `changelog`, but the **two documents you
+actually implement from** still showed a standalone per-channel secret (`whsec_…`) and never linked
+to [credential-derivation.md](./credential-derivation.md). This release fixes exactly that — **no
+protocol change, documentation only**.
+
+- `event-ingestion.md` · `campaign-launch.md` — examples now **derive the channel key from
+  `masterSecret`**, in both `bash` and `node`. All standalone-secret examples removed.
+- `campaign-launch.md` §2 — states plainly: **we do NOT issue a separate "LAUNCH Secret Key."** The
+  LAUNCH key differs from the EVENT key because the `info` string differs, not because two secrets
+  are sent.
+- `credential-derivation.md` — added a **10-second vector check**, a per-channel derive snippet, and
+  a table of **four common integration mistakes** *(decoding `channelKey`, confusing base64 with
+  base64url, lowercasing `CHANNEL`, mistyping `I`/`l`/`1`)*. All four produce the **same `401`**.
+- `README.md` — corrected "each with its own secret" to "each channel has its own key, but **you
+  derive them**", and made explicit that we tell you the host for your environment at handover.
+- `testing.md` + conformance runner — accepts **`CONF_MASTER_SECRET`** and derives every channel key
+  from it. Added `CONF_*_VERSION` *(default `1`)*. Standalone `CONF_*_SECRET` still accepted for
+  integrations not yet re-issued, and **wins** when set explicitly. The runner now **prints the
+  source of each key** on its first line — that line rules out two causes a `401` cannot.
+
 ## 1.3 — 2026-08-26
 
 - Partners now keep one `masterSecret` and derive isolated channel keys through

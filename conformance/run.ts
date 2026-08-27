@@ -1,3 +1,4 @@
+import { hkdfSync } from 'node:crypto';
 import { CA_BAT_BUOC, CA_LAUNCH, SO_CA_LAUNCH, SO_CA_RA, SO_CA_VAO } from './cases';
 import { ketQuaVaoCua, nangLucDaChungMinh, type CauHinh, type GoiHttp, type KetQuaCa } from './contract';
 
@@ -132,25 +133,90 @@ export function inBaoCao(kq: readonly KetQuaCa[]): string {
   ].join('\n');
 }
 
+type Kenh = 'AUTH' | 'EVENT' | 'RECOVERY' | 'LAUNCH';
+
+/**
+ * `IntegrationCredentialDerivationV1` — HKDF-SHA256 · salt RỖNG · 32 byte · base64url không padding.
+ *
+ * 🔴 CỐ Ý viết nội tuyến, KHÔNG import từ đâu cả. Docstring đầu file hứa *"không phụ thuộc nào ngoài
+ *    hai file cạnh nó… bạn sao chép ba file là chạy được"* — thêm một `import` là phá đúng lời hứa đó,
+ *    và bộ kiểm thôi chạy được trên máy bạn.
+ *
+ * ⚠️ Bản này AN TOÀN vì `integration-credential-derivation-v1.test-vector.json` là vector CHUNG cho cả
+ *    hai phía: lệch một ký tự thì vector không khớp. Bản sao nguy hiểm là bản không ai đối chiếu.
+ */
+function danXuatKhoaKenh(masterSecret: string, kenh: Kenh, version: number): string {
+  const ikm = Buffer.from(masterSecret, 'base64url');
+  if (ikm.length !== 32 || ikm.toString('base64url') !== masterSecret) {
+    throw new Error('CONF_MASTER_SECRET phải là 32 byte mã hoá base64url không padding (43 ký tự)');
+  }
+  const info = Buffer.from(`integration:channel:${kenh}:v${version}`, 'utf8');
+  return Buffer.from(hkdfSync('sha256', ikm, Buffer.alloc(0), info, 32)).toString('base64url');
+}
+
+/**
+ * 🔴 `CONF_MASTER_SECRET` là đường CHÍNH — bạn nhận **một** master và **tự dẫn xuất** khoá từng kênh;
+ *    chúng tôi không phát bí mật rời cho mỗi kênh nữa (xem `credential-derivation.md`).
+ *
+ * Vẫn nhận `CONF_*_SECRET` rời: tích hợp cũ chưa cấp lại credential vẫn đang cầm bí mật rời, và bắt
+ * họ đổi mới chạy được bộ kiểm là dựng một hàng rào ngay trước cái cửa dùng để **chứng minh mình
+ * đúng**. Rời **thắng** master khi có cả hai — người khai tường minh thì đang cố ý.
+ *
+ * ⚠️ Version mặc định `1`. Xoay khoá lên `v2` mà quên đặt `CONF_*_VERSION` thì bộ kiểm ký bằng khoá
+ *    `v1` và ăn `401` — trông y hệt "chữ ký sai". Vì thế báo cáo IN RA version đang dùng.
+ */
 function tuMoiTruong(): CauHinh {
   const can = (k: string) => {
     const v = process.env[k];
     if (!v) throw new Error(`thiếu biến môi trường ${k}`);
     return v;
   };
-  return {
+  const master = process.env.CONF_MASTER_SECRET || undefined;
+  const ver = (k: string) => {
+    const raw = process.env[k];
+    if (!raw) return 1;
+    const n = Number(raw);
+    if (!Number.isSafeInteger(n) || n < 1) throw new Error(`${k} phải là số nguyên dương, nhận "${raw}"`);
+    return n;
+  };
+  /** Khoá kênh: ưu tiên bí mật rời nếu người chạy khai tường minh, không thì dẫn xuất từ master. */
+  const khoaKenh = (kenh: Kenh, bienRoi: string, bienVer: string, batBuoc: boolean): string | undefined => {
+    const roi = process.env[bienRoi];
+    if (roi) return roi;
+    if (!master) {
+      if (!batBuoc) return undefined;
+      throw new Error(
+        `thiếu ${bienRoi} — hoặc đặt CONF_MASTER_SECRET để bộ kiểm tự dẫn xuất khoá kênh ${kenh} ` +
+          `(xem docs/guide/partner/vi/credential-derivation.md)`,
+      );
+    }
+    return danXuatKhoaKenh(master, kenh, ver(bienVer));
+  };
+
+  const cf: CauHinh = {
     cuaNenTang: can('CONF_API').replace(/\/$/, ''),
     accessKey: can('CONF_ACCESS_KEY'),
-    eventSecret: can('CONF_EVENT_SECRET'),
+    eventSecret: khoaKenh('EVENT', 'CONF_EVENT_SECRET', 'CONF_EVENT_VERSION', true)!,
     loaiSuKien: can('CONF_EVENT_TYPE'),
     diemCuoiPhucHoi: process.env.CONF_RECOVERY_URL || undefined,
     // Bí mật kênh PHỤC HỒI. Vắng ⇒ chiều RA gọi không ký (xem `hoi()` ở `cases.ts`).
-    recoverySecret: process.env.CONF_RECOVERY_SECRET || undefined,
+    recoverySecret: khoaKenh('RECOVERY', 'CONF_RECOVERY_SECRET', 'CONF_RECOVERY_VERSION', false),
     // LAUNCH là kênh danh tính HIỆN HÀNH (README § Required order) — BẮT BUỘC như EVENT, không có
     // nhánh "để trống thì bỏ qua" như RECOVERY.
-    launchSecret: can('CONF_LAUNCH_SECRET'),
+    launchSecret: khoaKenh('LAUNCH', 'CONF_LAUNCH_SECRET', 'CONF_LAUNCH_VERSION', true)!,
     launchCampaignId: can('CONF_LAUNCH_CAMPAIGN_ID'),
   };
+
+  // Nguồn khoá phải NHÌN THẤY ĐƯỢC: cùng một `401` có thể do sai secret, sai version, hoặc dẫn xuất
+  // nhầm kênh — in ra thì người đọc log tự loại được hai nguyên nhân mà không phải đoán.
+  const nguon = (bienRoi: string, bienVer: string) =>
+    process.env[bienRoi] ? 'bí mật rời' : `dẫn xuất từ master, v${ver(bienVer)}`;
+  console.log(
+    `▶ khoá kênh: EVENT=${nguon('CONF_EVENT_SECRET', 'CONF_EVENT_VERSION')} · ` +
+      `LAUNCH=${nguon('CONF_LAUNCH_SECRET', 'CONF_LAUNCH_VERSION')} · ` +
+      `RECOVERY=${cf.recoverySecret ? nguon('CONF_RECOVERY_SECRET', 'CONF_RECOVERY_VERSION') : 'không có (7 ca chiều RA sẽ SKIPPED)'}`,
+  );
+  return cf;
 }
 
 // Chạy trực tiếp thì thi hành; `import` thì không. Giữ file vừa là thư viện vừa là lệnh.

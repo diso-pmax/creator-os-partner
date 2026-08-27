@@ -25,21 +25,29 @@ bạn đã thoả hợp đồng chưa, rồi mới onboard. **Bạn không cần
 ### 1.1 Chạy
 
 ```bash
-CONF_API=https://<sandbox của chúng tôi>/api/v1 \
-CONF_ACCESS_KEY=<access key của bạn> \
-CONF_EVENT_SECRET=<secret kênh EVENT của bạn> \
+CONF_API=https://<host của môi trường bạn dùng>/api/v1 \
+CONF_ACCESS_KEY=<accessKey của bạn> \
+CONF_MASTER_SECRET=<masterSecret — base64url 43 ký tự> \
 CONF_EVENT_TYPE=ORDER_COMPLETED \
+CONF_LAUNCH_CAMPAIGN_ID=<campaignId chúng tôi cấp> \
 CONF_RECOVERY_URL=https://<hệ thống của bạn>/api/recovery \
-CONF_RECOVERY_SECRET=<secret kênh RECOVERY của bạn> \
   npx tsx run.ts
 ```
+
+Dòng đầu output in ra **nguồn của từng khoá kênh** — ví dụ
+`▶ khoá kênh: EVENT=dẫn xuất từ master, v1 · LAUNCH=dẫn xuất từ master, v1 · RECOVERY=không có`.
+Đọc dòng đó trước khi debug `401`: nó loại ngay hai nguyên nhân *(sai nguồn khoá, sai version)* mà
+bản thân mã `401` không phân biệt được.
 
 Mã thoát: **`0`** = mọi ca pass · **`1`** = có ít nhất một ca fail · **`2`** = không chạy được *(thiếu
 cấu hình)*.
 
 | Biến | Bắt buộc | Ghi chú |
 |---|:--:|---|
-| `CONF_API` · `CONF_ACCESS_KEY` · `CONF_EVENT_SECRET` · `CONF_EVENT_TYPE` | ✅ | thiếu ⇒ thoát `2` |
+| `CONF_API` · `CONF_ACCESS_KEY` · `CONF_EVENT_TYPE` · `CONF_LAUNCH_CAMPAIGN_ID` | ✅ | thiếu ⇒ thoát `2` |
+| **`CONF_MASTER_SECRET`** | ✅ | bộ kiểm **tự dẫn xuất** khoá từng kênh từ đây theo [credential-derivation.md](./credential-derivation.md) |
+| `CONF_EVENT_VERSION` · `CONF_LAUNCH_VERSION` · `CONF_RECOVERY_VERSION` | ⬜ | mặc định `1`. Sau khi **xoay khoá** thì PHẢI đặt — quên là bộ kiểm ký bằng khoá cũ và ăn `401` trông y hệt "chữ ký sai" |
+| `CONF_EVENT_SECRET` · `CONF_LAUNCH_SECRET` · `CONF_RECOVERY_SECRET` | ⬜ | **đường cũ** — bí mật rời cho từng kênh. Chỉ dùng nếu tích hợp của bạn chưa được cấp lại credential. Khai tường minh thì nó **thắng** `CONF_MASTER_SECRET` |
 | `CONF_RECOVERY_URL` | ⬜ | để trống ⇒ 7 ca chiều RA báo **SKIPPED** — **không phải** "passed" |
 | `CONF_RECOVERY_SECRET` | ⬜ | để trống ⇒ chạy không ký, dùng khi bạn đang dựng dở |
 
@@ -162,6 +170,11 @@ review đó.
 
 Con số cố định để **viết unit test cho hàm ký của bạn** — không cần mạng, không cần khoá thật. Lệch
 một ký tự nghĩa là implementation của bạn sai.
+
+⚠️ **`secret` trong các vector dưới là giá trị TUỲ Ý**, chỉ để kiểm hàm **ký**. Trong thực tế nó là
+**khoá kênh bạn dẫn xuất** từ `masterSecret` — xem [credential-derivation.md](./credential-derivation.md),
+nơi có bộ vector riêng cho phần **dẫn xuất**. Hai bộ vector kiểm hai việc khác nhau:
+*dẫn xuất đúng khoá chưa* và *ký đúng chưa*. Sai ở bước nào cũng ra cùng một `401`.
 
 ### 2.1 Kênh EVENT — `EventIngressSignatureV1`
 

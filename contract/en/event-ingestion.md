@@ -55,7 +55,25 @@ reconciliation).
 
 ```text
 canonical_string = timestamp + "." + raw_body
-signature        = "sha256=" + hex(HMAC_SHA256(EVENT_SECRET, canonical_string))
+signature        = "sha256=" + hex(HMAC_SHA256(EVENT_KEY, canonical_string))
+```
+
+🔴 **`EVENT_KEY` is not something we hand you.** You receive **one** `masterSecret` *(shown exactly
+once when we issue your credential)* and **derive** each channel key yourself:
+
+```text
+EVENT_KEY = HKDF-SHA256( ikm  = base64url_decode(masterSecret),
+                         salt = empty,
+                         info = "integration:channel:EVENT:v<VERSION>",
+                         len  = 32 )   → base64url, no padding
+```
+
+Full contract, rotation rules, and **test vectors to check your implementation against**:
+[credential-derivation.md](./credential-derivation.md). If the vectors match, your derivation is
+correct — no guessing.
+
+⚠️ `<VERSION>` is that channel's own version number, which we tell you at issue time *(usually `1`)*.
+Rotation increments it and you must follow — it cannot be inferred.
 ```
 
 `raw_body` MUST be the **exact byte sequence** transmitted on the wire — not a re-serialization of the
@@ -93,13 +111,23 @@ logging layers), make sure it does not touch the body after you have signed it.
 ```bash
 API='https://<your-sandbox-host>/api/v1'
 ACCESS_KEY='AK-DEMO-001'
-EVENT_SECRET='whsec_demo_0123456789abcdef'
+MASTER_SECRET='<your masterSecret — 43-char base64url, shown once>'
+EVENT_VERSION=1                                       # EVENT channel version, we tell you at issue time
+
+# ⬇️ DERIVE the EVENT channel key — do NOT sign with masterSecret directly.
+EVENT_KEY=$(node -e '
+  const { hkdfSync } = require("node:crypto");
+  const ikm  = Buffer.from(process.argv[1], "base64url");
+  const info = Buffer.from(`integration:channel:EVENT:v${process.argv[2]}`, "utf8");
+  process.stdout.write(
+    Buffer.from(hkdfSync("sha256", ikm, Buffer.alloc(0), info, 32)).toString("base64url"));
+' "$MASTER_SECRET" "$EVENT_VERSION")
 
 BODY='{"specversion":"1.0","eventId":"evt-88421","externalUserId":"12345","type":"ORDER_COMPLETED","occurredAt":"2026-08-14T09:12:33Z","confidence":"SERVER_OBSERVED","payload":{"orderId":"SO-99881","amountMinor":250000000,"currency":"VND"}}'
 TS=1786698753
 
 SIG="sha256=$(printf '%s.%s' "$TS" "$BODY" \
-      | openssl dgst -sha256 -hmac "$EVENT_SECRET" -r | cut -d' ' -f1)"
+      | openssl dgst -sha256 -hmac "$EVENT_KEY" -r | cut -d' ' -f1)"   # base64url string, used AS-IS
 # → sha256=ae00dc858385fdb65061fda5da1809772f8f602f5d653052e7672516c4d59176
 
 curl -sS -D- "$API/integrations/events" \
@@ -128,7 +156,12 @@ function signEvent(secret, rawBody, timestampSeconds) {
 
 const body = JSON.stringify(event);            // serialize ONCE
 const ts   = Math.floor(Date.now() / 1000);
-const sig  = signEvent(EVENT_SECRET, body, ts);
+const EVENT_KEY = Buffer.from(crypto.hkdfSync(
+  'sha256', Buffer.from(MASTER_SECRET, 'base64url'), Buffer.alloc(0),
+  Buffer.from(`integration:channel:EVENT:v${EVENT_VERSION}`, 'utf8'), 32,
+)).toString('base64url');                      // derive ONCE at startup, keep in memory
+
+const sig  = signEvent(EVENT_KEY, body, ts);   // ⚠️ channel key, not masterSecret
 await fetch(`${API}/integrations/events`, {
   method: 'POST',
   headers: { 'Content-Type': 'application/json', 'X-API-Key': ACCESS_KEY, 'X-Timestamp': String(ts), 'X-Signature': sig },

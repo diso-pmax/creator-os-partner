@@ -33,15 +33,23 @@ kênh theo [`IntegrationCredentialDerivationV1`](./credential-derivation.md).
 
 - **Một Access Key** (`accessKey`) — dùng chung cho mọi kênh, không phân biệt hoa/thường.
 - **Một Master Secret** (`masterSecret`) — chỉ hiện một lần. Từ đó bạn dẫn xuất khoá riêng từng kênh:
-  1. Secret Key kênh **EVENT** — chúng tôi dùng để verify chữ ký sự kiện bạn gửi.
-  2. Secret Key kênh **LAUNCH** — chúng tôi dùng để verify chữ ký request Campaign Launch bạn gửi (xem [campaign-launch.md](./campaign-launch.md)).
-  3. Secret Key kênh **RECOVERY** *(chỉ cấp nếu bạn dựng đường phục hồi)* — để **chúng tôi** ký khi gọi sang bạn.
-- Môi trường thử nghiệm (sandbox) + bộ kiểm hợp chuẩn tự chạy (conformance test suite).
+  1. Khoá kênh **EVENT** — chúng tôi dùng để verify chữ ký sự kiện bạn gửi.
+  2. Khoá kênh **LAUNCH** — chúng tôi dùng để verify chữ ký request Campaign Launch bạn gửi (xem [campaign-launch.md](./campaign-launch.md)).
+  3. Khoá kênh **RECOVERY** *(chỉ dùng nếu bạn dựng đường phục hồi)* — để **chúng tôi** ký khi gọi sang bạn.
+
+  🔴 **Ba khoá trên chúng tôi KHÔNG gửi cho bạn** — bạn tự dẫn xuất từ `masterSecret`. Chúng tôi chỉ
+  báo kèm **số version của từng kênh** *(thường bắt đầu từ `1`)*, vì version nằm trong chuỗi `info`.
+- Môi trường thử nghiệm + bộ kiểm hợp chuẩn tự chạy (conformance test suite).
+- **Host của môi trường bạn dùng** — chúng tôi báo khi bàn giao. Mọi ví dụ trong bộ tài liệu này
+  viết `https://<host của môi trường bạn dùng>/api/v1`; thay bằng giá trị chúng tôi gửi, KHÔNG
+  đoán từ tên miền của cổng quản trị.
 - Mã nguồn sự kiện — ánh xạ `type` bạn gửi sang hệ thống nội bộ của chúng tôi.
 
 ## Bạn cung cấp cho Creator-OS
 
-- Một máy chủ có khả năng tính chữ ký HMAC-SHA256 (dùng ở mọi kênh, mỗi kênh một secret riêng).
+- Một máy chủ tính được **HKDF-SHA256** *(để dẫn xuất khoá từng kênh từ `masterSecret`)* và
+  **HMAC-SHA256** *(để ký)*. Mỗi kênh một khoá riêng, nhưng **bạn dẫn xuất chúng** — chúng tôi chỉ
+  phát `masterSecret`. Xem [credential-derivation.md](./credential-derivation.md).
 - **Kênh EVENT**: sự việc xảy ra trong hệ thống của bạn (đơn hàng, hành vi giao diện) — gửi qua `POST /api/v1/integrations/events`, gọi **từ máy chủ của bạn**.
 - **Kênh LAUNCH**: yêu cầu khởi tạo session cho một người dùng đã biết — gửi qua `POST /api/v1/campaigns/:campaignId/launch`, gọi **từ máy chủ của bạn** — xem [campaign-launch.md](./campaign-launch.md).
 - *(tuỳ chọn)* Một endpoint phục hồi phía bạn — để chúng tôi hỏi ngược khi cần đối soát/lấp chỗ thiếu.

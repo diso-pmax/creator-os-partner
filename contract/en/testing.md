@@ -27,7 +27,7 @@ whether you satisfy the contract, then onboard. **You do not need to wait for us
 ```bash
 CONF_API=https://<our sandbox host>/api/v1 \
 CONF_ACCESS_KEY=<your access key> \
-CONF_EVENT_SECRET=<your EVENT channel secret> \
+CONF_MASTER_SECRET=<your masterSecret — 43-char base64url> \
 CONF_EVENT_TYPE=ORDER_COMPLETED \
 CONF_RECOVERY_URL=https://<your system>/api/recovery \
 CONF_RECOVERY_SECRET=<your RECOVERY channel secret> \
@@ -39,7 +39,10 @@ Exit code: **`0`** = all passed · **`1`** = at least one case failed · **`2`**
 
 | Variable | Required | Note |
 |---|:--:|---|
-| `CONF_API` · `CONF_ACCESS_KEY` · `CONF_EVENT_SECRET` · `CONF_EVENT_TYPE` | ✅ | missing ⇒ exits `2` |
+| `CONF_API` · `CONF_ACCESS_KEY` · `CONF_EVENT_TYPE` | ✅ | missing ⇒ exits `2` |
+| **`CONF_MASTER_SECRET`** | ✅ | the runner **derives** every channel key from this, per [credential-derivation.md](./credential-derivation.md) |
+| `CONF_EVENT_VERSION` · `CONF_LAUNCH_VERSION` · `CONF_RECOVERY_VERSION` | ⬜ | default `1`. After a **key rotation** you MUST set these — otherwise the runner signs with the old key and gets a `401` that looks exactly like "bad signature" |
+| `CONF_EVENT_SECRET` · `CONF_LAUNCH_SECRET` · `CONF_RECOVERY_SECRET` | ⬜ | **legacy path** — a standalone secret per channel. Only for integrations not yet re-issued. When set explicitly it **wins** over `CONF_MASTER_SECRET` |
 | `CONF_RECOVERY_URL` | ⬜ | left empty ⇒ the 7 outbound cases report **SKIPPED** — **not** "passed" |
 | `CONF_RECOVERY_SECRET` | ⬜ | left empty ⇒ runs unsigned, for use while you are still building |
 
@@ -166,6 +169,12 @@ to find your own bugs before that review.
 
 Fixed numbers for **unit-testing your signing function** — no network, no real keys needed. A single
 differing character means your implementation is wrong.
+
+⚠️ **The `secret` in the vectors below is an ARBITRARY value**, used only to test the **signing**
+step. In practice it is the **channel key you derive** from `masterSecret` — see
+[credential-derivation.md](./credential-derivation.md), which carries its own vectors for the
+**derivation** step. The two vector sets check two different things: *did you derive the right key*
+and *did you sign correctly*. Getting either wrong produces the same `401`.
 
 ### 2.1 EVENT channel — `EventIngressSignatureV1`
 
