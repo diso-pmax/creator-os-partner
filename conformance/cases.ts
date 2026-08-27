@@ -34,8 +34,14 @@ import { dat, truot, type Ca, type CauHinh, type GoiHttp, type PhanHoi } from '.
  *    nó không nói gì về chiều vào. Tới khi có phán quyết, ca chiều VÀO **in ra** chứ không ghi sổ.
  */
 
-/** Khuôn ký `EventIngressSignatureV1` — `timestamp + "." + thân THÔ`, theo BYTE. */
-function ky(secret: string, ts: string, thanTho: string): string {
+/**
+ * Khuôn ký `EventIngressSignatureV1` — `timestamp + "." + thân THÔ`, theo BYTE.
+ *
+ * ⭐ `export` để công cụ nội bộ dùng LẠI đúng khuôn này thay vì chép công thức sang chỗ thứ hai —
+ *    lệch một byte là `401` mà không ai biết vì sao. Bản chép cho bên đối ứng không đổi gì: thêm một
+ *    `export` không tạo phụ thuộc mới, ba file cạnh nhau vẫn chạy độc lập.
+ */
+export function ky(secret: string, ts: string, thanTho: string): string {
   return `sha256=${createHmac('sha256', secret).update(`${ts}.${thanTho}`).digest('hex')}`;
 }
 
@@ -359,7 +365,14 @@ export const SO_CA_RA = RA.length;
 // `contract.ts` — `Chieu` đã có nhánh thứ ba riêng cho việc này.
 
 /** Gọi `POST .../campaigns/:id/launch` — HMAC kênh LAUNCH, CÙNG khuôn ký `ky()` ở trên, khác secret. */
-function taoLaunch(cf: CauHinh, goi: GoiHttp, campaignId: string, externalUserId: string): Promise<PhanHoi> {
+export function taoLaunch(
+  // Thu hẹp đúng ba trường thật sự dùng — công cụ nội bộ không phải dựng một `CauHinh` giả với
+  // `eventSecret`/`loaiSuKien` bịa ra chỉ để gọi được hàm này. `CauHinh` đầy đủ vẫn thoả kiểu này.
+  cf: Pick<CauHinh, 'cuaNenTang' | 'accessKey' | 'launchSecret'>,
+  goi: GoiHttp,
+  campaignId: string,
+  externalUserId: string,
+): Promise<PhanHoi> {
   const raw = JSON.stringify({ externalUserId });
   const ts = String(Math.floor(Date.now() / 1000));
   return goi(`${cf.cuaNenTang}/campaigns/${campaignId}/launch`, {

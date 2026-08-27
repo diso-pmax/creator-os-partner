@@ -145,7 +145,8 @@ type Kenh = 'AUTH' | 'EVENT' | 'RECOVERY' | 'LAUNCH';
  * ⚠️ Bản này AN TOÀN vì `integration-credential-derivation-v1.test-vector.json` là vector CHUNG cho cả
  *    hai phía: lệch một ký tự thì vector không khớp. Bản sao nguy hiểm là bản không ai đối chiếu.
  */
-function danXuatKhoaKenh(masterSecret: string, kenh: Kenh, version: number): string {
+/** ⭐ `export` để công cụ nội bộ dẫn xuất khoá kênh bằng CÙNG một hàm — xem chú ở `ky()`. */
+export function danXuatKhoaKenh(masterSecret: string, kenh: Kenh, version: number): string {
   const ikm = Buffer.from(masterSecret, 'base64url');
   if (ikm.length !== 32 || ikm.toString('base64url') !== masterSecret) {
     throw new Error('CONF_MASTER_SECRET phải là 32 byte mã hoá base64url không padding (43 ký tự)');
