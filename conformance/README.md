@@ -44,6 +44,22 @@ nào)*, nhưng đó vẫn là dữ liệu thật.
 🔑 Mọi thứ bộ này tạo ra đều mang tiền tố **`conf-`** *(`eventId`, `externalUserId`)* nên lọc và dọn
 được. Cứ chạy lại bao nhiêu lần cũng an toàn về mặt đúng/sai — chỉ là tích rác.
 
+### ⚠️ Trừ MỘT trường hợp: lượt chạy để MỞ CỬA cho tích hợp thật của bạn
+
+Lời khuyên trên dành cho lúc bạn **tự thử**. Lượt chạy mà Diso dùng làm **điều kiện vào cửa** thì
+**bắt buộc** trỏ vào chính hệ thống thật, và không có đường vòng:
+
+Kết quả hợp chuẩn được đóng dấu **kèm cấu hình mà nó đã kiểm** — khoá, tên miền, điểm cuối phục hồi,
+bản đồ loại sự kiện. Lúc mở cửa, Diso so lại dấu đó với cấu hình đang chạy. Một lượt `PASS` chạy trên
+môi trường khác *(khoá khác, cấu hình khác)* là `PASS` **của một cấu hình khác** ⇒ nó **không mở được**
+cửa cho tích hợp thật của bạn.
+
+✅ **Chạy lúc nguồn còn ở chế độ chưa mở van là an toàn** — gói tin được nhận và ghi lại, **không sinh
+đồng điểm nào**. Đó chính là lý do bước này nằm **trước** lúc mở van chứ không phải sau.
+
+⚠️ **Sau khi Diso báo đã mở van, khoá bạn dùng cho lượt kiểm sẽ được cho nghỉ** và Diso báo bạn **số
+phiên bản mới** của kênh `EVENT`. Bạn tự dẫn xuất lại khoá theo số đó — Diso **không** gửi khoá.
+
 ## 14 ca bắt buộc — hai chiều, và chúng đo hai thứ khác hẳn nhau
 
 | | Kiểm ai | Cấp hạng |
