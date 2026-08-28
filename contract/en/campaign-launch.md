@@ -114,10 +114,19 @@ integration), not something enforced by a technical mechanism you can observe.
 
 ```jsonc
 {
-  "launchUrl": "https://<our sandbox host>/api/v1/launch?code=<opaque code>",
+  "launchUrl": "https://<our REWARD PORTAL host>/api/v1/launch?code=<opaque code>",
   "expiresAt": "2026-08-25T10:31:00.000Z"
 }
 ```
+
+⚠️ **`launchUrl` lives on the REWARD PORTAL host, not the API host you just POSTed to** (#1214). The
+two hosts differ **on purpose**: the session cookie must land where the game page reads it, and the
+`__Host-` prefix we use **forbids** a `Domain` attribute — so there is no way to share the cookie
+across two hosts.
+
+⇒ **Nothing changes for you** (still just open `launchUrl` verbatim in the WebView), but if you run the
+**conformance suite**, the machine running it must be able to **reach the reward portal host**, not
+only the API host.
 
 `launchUrl` is only valid until `expiresAt` — **60 seconds** from creation in this version (v1
 parameter, not a protocol invariant — see §6, item 4). Open it in the user's WebView immediately; do
@@ -128,7 +137,7 @@ not cache or delay.
 ## 5. Step 2 — The WebView consumes the code
 
 ```text
-GET https://<our sandbox host>/api/v1/launch?code=<opaque code>
+GET https://<our REWARD PORTAL host>/api/v1/launch?code=<opaque code>
 ```
 
 You do not call this endpoint yourself — you only open `launchUrl` (the full URL, code included) in the
@@ -187,7 +196,7 @@ these, stop and contact us rather than finding a way past it.
 
 ```text
 You call:        POST .../launch  { campaignId: A, externalUserId: X }
-We return:        { launchUrl: "https://creator-os.example/api/v1/launch?code=ABC" }
+We return:        { launchUrl: "https://reward-portal.creator-os.example/api/v1/launch?code=ABC" }
 WebView opens:    GET /launch?code=ABC&campaignId=B     ← campaignId added/altered on the URL
 ```
 

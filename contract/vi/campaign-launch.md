@@ -156,10 +156,17 @@ này), không phải thứ chặn được 100% bằng cơ chế kỹ thuật b�
 
 ```jsonc
 {
-  "launchUrl": "https://<host sandbox của chúng tôi>/api/v1/launch?code=<code mờ>",
+  "launchUrl": "https://<host CỔNG THƯỞNG của chúng tôi>/api/v1/launch?code=<code mờ>",
   "expiresAt": "2026-08-25T10:31:00.000Z"
 }
 ```
+
+⚠️ **`launchUrl` nằm trên host CỔNG THƯỞNG, KHÔNG phải host API bạn vừa gọi POST** *(#1214)*. Hai host
+khác nhau là **cố ý**: cookie phiên phải rơi đúng nơi trang game đọc nó, và tiền tố `__Host-` mà chúng
+tôi dùng **cấm** thuộc tính `Domain` — nên không có cách nào chia cookie giữa hai host.
+
+⇒ Bạn **không phải làm gì thêm** *(vẫn chỉ mở nguyên `launchUrl` trong WebView)*, nhưng nếu bạn chạy
+**bộ kiểm hợp chuẩn** thì máy chạy nó phải **với tới được host cổng thưởng**, không chỉ host API.
 
 `launchUrl` chỉ hợp lệ tới `expiresAt` — **60 giây** kể từ lúc tạo ở bản này (tham số v1, không phải bất
 biến giao thức — xem §6, mục 4). Mở nó trong WebView của người dùng ngay lập tức — đừng cache hay trì
@@ -170,7 +177,7 @@ hoãn.
 ## 5. Bước 2 — WebView tiêu thụ code
 
 ```text
-GET https://<host sandbox của chúng tôi>/api/v1/launch?code=<code mờ>
+GET https://<host CỔNG THƯỞNG của chúng tôi>/api/v1/launch?code=<code mờ>
 ```
 
 Bạn không tự gọi endpoint này — bạn chỉ mở `launchUrl` (nguyên URL, kèm code) trong WebView của người
