@@ -3,6 +3,20 @@
 *(bản dịch của [en/changelog.md](../en/changelog.md) — bản tiếng Anh là nguồn chốt, lệch thì bản tiếng
 Anh thắng)*
 
+## 1.3.2 — 2026-08-29
+
+`event-ingestion.md` §5.3 nói `UI_ACTION` có **hình dạng payload mở**. Câu đó SAI: cửa nhận luôn đòi
+`actionKey` cho `UI_ACTION` và từ chối sự kiện thiếu nó. **Không đổi giao thức, chỉ đổi tài liệu** —
+nhưng nếu bạn đã code theo bản cũ thì kiểm lại payload `UI_ACTION` của mình.
+
+- `event-ingestion.md` §5.3 — `actionKey` nay ghi rõ là **BẮT BUỘC** với `UI_ACTION`, kèm giá trị cụ
+  thể phải gửi. Nó **phân biệt hoa/thường và so chuỗi thô**: sai hoa thường vẫn trả `200`, và quyền
+  lợi **âm thầm không bao giờ được tính**.
+- **`BRAND_CLICK`** — `actionKey` của hành vi "người dùng click vào một brand trên Mua sắm hoàn tiền".
+  Các giá trị này do chúng tôi đặt, bạn gửi nguyên văn.
+- `error-codes.md` — thêm `payload_field_missing` vào bảng mã nghiệp vụ của `422`. Mã này cửa nhận có
+  trả, mà không tài liệu nào liệt kê.
+
 ## 1.3.1 — 2026-08-27
 
 Bản 1.3 công bố mô hình `masterSecret` ở `README` và `changelog`, nhưng **hai tài liệu bạn thật sự

@@ -258,8 +258,27 @@ hợp lệ. `ORDER_CREATED` chỉ đẩy thời điểm ghi nhận sớm hơn.
 { "orderId": "SO-99881", "amountMinor": 250000000, "currency": "VND" }
 ```
 
-`UI_ACTION`: hình dạng mở — gửi thứ gì mô tả hành vi; trường thừa được lưu nguyên văn và bị bỏ qua,
-không bao giờ gây lỗi.
+`UI_ACTION` — **`actionKey` là BẮT BUỘC**:
+
+```jsonc
+{ "actionKey": "BRAND_CLICK" }
+```
+
+🔴 **`actionKey` do chúng tôi đặt, bạn gửi đúng chuỗi đó.** Nó là thứ duy nhất phân biệt các hành vi
+giao diện với nhau — `UI_ACTION` là **một** loại dùng chung cho mọi hành vi, nên thiếu `actionKey` thì
+không ai biết bạn vừa báo hành vi nào.
+
+| Hành vi | `actionKey` gửi lên |
+|---|---|
+| người dùng click vào một brand trên Mua sắm hoàn tiền | `BRAND_CLICK` |
+
+⚠️ **Phân biệt hoa/thường, so chuỗi thô.** `BRAND_CLICK` ≠ `brand_click` ≠ `Brand_Click`. Sai hoa
+thường thì sự kiện **vẫn được nhận, vẫn trả `200`**, nhưng quyền lợi gắn với hành vi đó **không bao giờ
+được tính** — và không có lỗi nào bật lên để bạn biết.
+
+⚠️ **Thiếu hẳn `actionKey`** ⇒ `422 payload_field_missing` (xem [error-codes.md](./error-codes.md)).
+
+Ngoài `actionKey`, hình dạng là mở — trường thừa được lưu nguyên văn và bị bỏ qua, không bao giờ gây lỗi.
 
 Ba trường bạn KHÔNG ĐƯỢC gửi bên trong `payload`: một alias nội bộ của `eventId`/`deliveryId`, bất cứ
 gì tên `subject`, và bất kỳ trường nào định danh người dùng ngoài `externalUserId` ở tầng ngoài.

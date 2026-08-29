@@ -95,6 +95,8 @@ Full context: [event-ingestion.md](./event-ingestion.md).
 | `type: STREAK_REACHED` | `derived_event_not_accepted` | stop sending it — we derive this ourselves |
 | a valid `type` not yet registered for your key | `event_type_not_registered` | contact us — this is a configuration gap on our side, your payload is correct |
 | an `eventId` already used for a **different** `type` | `event_id_conflict` | mint a new id for this attempt |
+| `type: UI_ACTION` with `payload` missing `actionKey` | `payload_field_missing` | add `actionKey` — the error names the missing field |
+| an order type with `payload` missing `orderId`, or carrying `amountMinor` without `currency` | `payload_field_missing` | add the field the error names |
 
 ⚠️ **`400` and `422` mean different things — do not conflate them.** `400` means "malformed, fix the
 shape and resend"; `422` means "well-formed, wrong meaning — read `code` to know which side must act."

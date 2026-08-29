@@ -253,8 +253,28 @@ integration. `ORDER_CREATED` only moves the recognition point earlier.
 { "orderId": "SO-99881", "amountMinor": 250000000, "currency": "VND" }
 ```
 
-`UI_ACTION`: shape is open — send what describes the action; extra fields are stored verbatim and
-ignored, they never cause an error.
+`UI_ACTION` — **`actionKey` is REQUIRED**:
+
+```jsonc
+{ "actionKey": "BRAND_CLICK" }
+```
+
+🔴 **We define `actionKey`; you send that exact string.** It is the only thing that tells UI behaviors
+apart — `UI_ACTION` is **one** type shared by every UI behavior, so without `actionKey` nobody knows
+which behavior you just reported.
+
+| Behavior | `actionKey` to send |
+|---|---|
+| user clicks a brand in Cashback Shopping | `BRAND_CLICK` |
+
+⚠️ **Case-sensitive, compared as a raw string.** `BRAND_CLICK` ≠ `brand_click` ≠ `Brand_Click`. Get the
+case wrong and the event is **still accepted and still returns `200`**, but the entitlement tied to that
+behavior is **never counted** — and no error is raised to tell you.
+
+⚠️ **Omitting `actionKey`** ⇒ `422 payload_field_missing` (see [error-codes.md](./error-codes.md)).
+
+Beyond `actionKey` the shape is open — extra fields are stored verbatim and ignored, they never cause
+an error.
 
 Three fields you MUST NOT send inside `payload`: an internal `eventId`/`deliveryId` alias, anything
 named `subject`, and any field intended to identify the user other than the top-level `externalUserId`.

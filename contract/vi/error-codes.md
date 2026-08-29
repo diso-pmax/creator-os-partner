@@ -97,6 +97,8 @@ Ngữ cảnh đầy đủ: [event-ingestion.md](./event-ingestion.md).
 | `type: STREAK_REACHED` | `derived_event_not_accepted` | thôi gửi — chúng tôi tự suy ra |
 | một `type` hợp lệ nhưng chưa đăng ký cho khoá của bạn | `event_type_not_registered` | báo chúng tôi — đây là lỗ cấu hình phía chúng tôi, payload của bạn đúng |
 | một `eventId` đã dùng cho `type` **khác** | `event_id_conflict` | sinh id mới cho lượt này |
+| `type: UI_ACTION` mà `payload` thiếu `actionKey` | `payload_field_missing` | bổ sung `actionKey` — lỗi nêu tên trường còn thiếu |
+| một loại đơn hàng mà `payload` thiếu `orderId`, hoặc có `amountMinor` mà thiếu `currency` | `payload_field_missing` | bổ sung trường lỗi nêu tên |
 
 ⚠️ **`400` và `422` có nghĩa khác nhau — đừng gộp chung.** `400` nghĩa là "sai khuôn, sửa hình dạng rồi
 gửi lại"; `422` nghĩa là "đúng khuôn, sai nghĩa — đọc `code` để biết bên nào phải hành động." Coi một

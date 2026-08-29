@@ -1,5 +1,19 @@
 # Changelog
 
+## 1.3.2 — 2026-08-29
+
+`event-ingestion.md` §5.3 said `UI_ACTION` had an **open payload shape**. That was wrong: the gateway
+has always required `actionKey` for `UI_ACTION` and rejects the event without it. **No protocol
+change, documentation only** — but if you built against the old text, check your `UI_ACTION` payload.
+
+- `event-ingestion.md` §5.3 — `actionKey` is documented as **REQUIRED** for `UI_ACTION`, with the
+  concrete value to send. It is **case-sensitive and compared as a raw string**: the wrong case still
+  returns `200`, and the entitlement is silently never counted.
+- **`BRAND_CLICK`** — the `actionKey` for "user clicks a brand in Cashback Shopping". We define these
+  values; you send them verbatim.
+- `error-codes.md` — added `payload_field_missing` to the `422` business-code table. It was reachable
+  from the gateway but listed nowhere.
+
 ## 1.3.1 — 2026-08-27
 
 1.3 announced the `masterSecret` model in `README` and `changelog`, but the **two documents you
