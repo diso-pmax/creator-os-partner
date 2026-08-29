@@ -494,17 +494,53 @@ const LAUNCH: Ca[] = [
     ten: 'code của campaign A không mở được campaign B ⇒ bị từ chối',
     capNangLuc: null,
     async chay(cf, goi) {
-      const tao = await taoLaunch(cf, goi, cf.launchCampaignId, nguoiDungMoi());
-      if (!laLaunchUrl(tao.body)) return truot(`không tạo được launch grant để thử (status ${tao.status})`);
-      // Gắn `campaignId` RÁC vào query — server CHỈ đọc `code`, mọi trường khác PHẢI bị bỏ qua (bất
-      // biến #9, campaign-launch.md §6.1). Không cần campaign B thật: redirect vẫn trỏ đúng campaign
-      // GỐC là đủ bằng chứng server chưa từng đọc trường bị gắn thêm.
-      const r = await moLaunch(goi, tao.body.launchUrl, { campaignId: `conf-campaign-khac-${randomUUID()}` });
-      if (r.status !== 302) return truot(`mong 302 (trường lạ bị bỏ qua, KHÔNG làm hỏng lượt tiêu thụ), nhận ${r.status}`);
-      const diaDiem = r.headers['location'] ?? '';
-      return diaDiem.includes(cf.launchCampaignId)
+      // ── 🔴 SỬA 2026-08-29 — bản trước khoá một HÌNH DẠNG REDIRECT KHÔNG CÒN TỒN TẠI ────────────
+      //
+      //    Nó đòi `Location` chứa `campaignId` GỐC. **#1188 đã cố ý bỏ điều đó**: đích nay là GỐC
+      //    webview Thưởng, một hằng số phía máy chủ, và webview tự hỏi chiến dịch nào đang chạy cho
+      //    đơn vị trong vé. Tài liệu partner đã nói đúng từ lúc đó — *"Đích không mang `campaignId`"*
+      //    (`campaign-launch.md` §6, ngay trên §6.1) — chỉ ca kiểm này là chưa theo.
+      //
+      // ⇒ Đo lần đầu vào CỬA THẬT ngày 2026-08-29: `Location: http://localhost:4800/`, ca TRƯỢT. Đối
+      //   tác chạy `run.ts` sẽ thấy một ❌ ở kênh LAUNCH và tưởng mình bị chặn onboarding, trong khi
+      //   cửa làm ĐÚNG hợp đồng đã công bố.
+      //
+      // ── Bất biến vẫn phải được chứng minh, chỉ đổi cách QUAN SÁT ───────────────────────────────
+      //
+      //    Bất biến #9: server CHỈ đọc `code`; mọi tham số gắn thêm bị bỏ qua **âm thầm**. Không còn
+      //    `campaignId` trong `Location` để soi, nên đo bằng ĐỐI CHỨNG: một lượt tiêu thụ SẠCH và một
+      //    lượt tiêu thụ có `campaignId` rác phải cho **cùng mã, cùng đích**. Khác nhau ở bất kỳ vế
+      //    nào nghĩa là trường gắn thêm ĐÃ đi vào quyết định — đúng thứ bất biến này cấm.
+      //
+      // ⚠️ Đây KHÔNG phải nới bài kiểm: bản cũ chỉ đọc được `Location`; bản này so TOÀN BỘ kết quả
+      //    quan sát được của hai lượt, nên nó bắt được cả những cách "trường lạ ăn vào" mà bản cũ bỏ
+      //    lọt (đổi mã, mất cookie, đích khác).
+      const [taoSach, taoRac] = await Promise.all([
+        taoLaunch(cf, goi, cf.launchCampaignId, nguoiDungMoi()),
+        taoLaunch(cf, goi, cf.launchCampaignId, nguoiDungMoi()),
+      ]);
+      if (!laLaunchUrl(taoSach.body) || !laLaunchUrl(taoRac.body)) {
+        return truot(`không tạo được hai launch grant để đối chứng (status ${taoSach.status}/${taoRac.status})`);
+      }
+      const sach = await moLaunch(goi, taoSach.body.launchUrl);
+      const rac = await moLaunch(goi, taoRac.body.launchUrl, {
+        campaignId: `conf-campaign-khac-${randomUUID()}`,
+      });
+      if (sach.status !== 302) return truot(`lượt ĐỐI CHỨNG phải 302, nhận ${sach.status} — bài không đo được gì`);
+      if (rac.status !== 302) {
+        return truot(`mong 302 (trường lạ bị bỏ qua, KHÔNG làm hỏng lượt tiêu thụ), nhận ${rac.status}`);
+      }
+      const dichSach = sach.headers['location'] ?? '';
+      const dichRac = rac.headers['location'] ?? '';
+      if (dichRac !== dichSach) {
+        return truot(
+          `gắn \`campaignId\` lạ vào URL ĐÃ ĐỔI đích: sạch "${dichSach}" vs rác "${dichRac}" — ` +
+            'server đang đọc một trường mà hợp đồng nói nó phải bỏ qua',
+        );
+      }
+      return rac.headers['set-cookie']
         ? dat()
-        : truot(`redirect phải trỏ về campaign GỐC (${cf.launchCampaignId}), nhận Location: ${diaDiem}`);
+        : truot('lượt có trường lạ không nhận được `Set-Cookie` — trường bị gắn thêm đã phá phiên');
     },
   },
   {
