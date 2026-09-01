@@ -3,6 +3,42 @@
 > Dành cho **bên tích hợp**. Bạn chạy bộ này trên hệ thống của mình, xem mình đã thoả hợp đồng chưa,
 > rồi mới onboard. Không cần đợi ai kiểm hộ.
 
+## 🔴 BỘ NÀY KHÔNG ĐO ĐƯỢC VÒNG ĐỜI MỘT ĐƠN — đọc trước khi dùng nó để kiểm ví
+
+Nó kiểm **hợp đồng của cửa vào**: gói tin đúng khuôn chưa, chữ ký đúng chưa, cửa từ chối đúng chưa.
+Nó **không** kiểm *"đơn tạo rồi hoàn tất rồi huỷ thì ví chạy thế nào"*, và **không thể** kiểm — theo
+thiết kế, không phải do thiếu sót:
+
+| Chỗ | Nó làm gì | Hệ quả |
+|---|---|---|
+| `cases.ts:49` `goiTin()` | `externalUserId: conf-user-<uuid>` | **người chơi MỚI** mỗi gói tin |
+| `cases.ts:55` | `payload.orderId: CONF-<uuid>` | **đơn MỚI** mỗi gói tin |
+| `run.ts:201` | `loaiSuKien: CONF_EVENT_TYPE` | **MỘT loại** sự kiện mỗi lượt chạy |
+
+Mỗi ca phải độc lập thì bộ kiểm hợp đồng mới đúng — và đó cũng là lý do mục *"Trỏ vào SANDBOX"* dưới
+đây nói **không tiền thưởng nào bị động**: người dùng giả không khớp hồ sơ nào.
+
+⚠️ **Dùng nó để đo vòng đời thì phải chạy BA LƯỢT với ba `CONF_EVENT_TYPE`, và mỗi lượt lại sinh một
+`orderId` khác** ⇒ ba nhịp thành **ba đơn khác nhau**:
+
+- lệnh huỷ **không có gì để đảo** ⇒ ví chỉ tăng, không bao giờ giảm
+- nhìn từ ngoài đọc ra *"huỷ đơn mà vẫn cộng điểm"* — **một lỗi sản phẩm không hề tồn tại**
+
+Đã xảy ra thật: **#1489**, và trước đó **#1468**. Cả hai đều tốn một vòng truy vào code sản phẩm rồi
+mới lòi ra là công cụ dùng sai việc.
+
+### ⇒ Muốn đo vòng đời một đơn thì dùng cái này
+
+```bash
+VD_API=https://portal-console.diso.vn/api/v1 \
+VD_ACCESS_KEY=AK-... VD_EVENT_SECRET=... VD_USER=qa-lan-wallet-01 \
+  npx tsx qa/vong-doi-don.ts
+```
+
+Nó bắn **ba nhịp trên CÙNG một `orderId`, cùng một người chơi**, in mã đơn ra để bạn nhìn thấy nó
+không đổi, và chờ giữa các nhịp cho worker kịp chấm. Ví thì bạn **đọc trên màn webview** — đó mới là
+thứ nghiệm thu hỏi tới.
+
 ## Chạy
 
 ```bash
