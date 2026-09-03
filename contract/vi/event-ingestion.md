@@ -238,6 +238,7 @@ tính cho quyền lợi đó**. Đây **không phải lỗi — đừng gửi l�
 | `ORDER_COMPLETED` | ✅ | đơn đã hoàn tất |
 | `ORDER_CANCELLED` | ✅ | đơn huỷ **hoặc hoàn** — một loại cho cả hai |
 | `UI_ACTION` | ✅ | hành vi giao diện phía bạn, do bạn chứng thực |
+| `POINT_REDEEMED` | ✅ | **bạn đã trả tiền cho người chơi** theo bảng kê chúng tôi bàn giao *(mở 2026-09-03)* |
 | `CHECKIN` | ❌ | xảy ra trong sản phẩm của chúng tôi, chúng tôi tự ghi |
 | `STREAK_REACHED` | ❌ | chúng tôi tự suy ra từ chuỗi điểm danh, không nhận từ bạn |
 
@@ -263,6 +264,44 @@ hợp lệ. `ORDER_CREATED` chỉ đẩy thời điểm ghi nhận sớm hơn.
 ```jsonc
 { "actionKey": "BRAND_CLICK" }
 ```
+
+`POINT_REDEEMED` — **bạn đã trả tiền, báo về** *(mở 2026-09-03)*:
+
+```jsonc
+{
+  "settlementItemId": "3f6a1c22-9d40-4b7e-8a11-2c5e77d09b41",
+  "redemptionRef": "PAYOUT-88213",
+  "amountMinor": 5000,
+  "currency": "VND"
+}
+```
+
+Chúng tôi bàn giao cho bạn một **bảng kê**: mỗi dòng là một người chơi, số điểm, tỷ giá đã đóng dấu, và
+số tiền phải trả. Bạn trả tiền, rồi gửi về **một sự kiện cho mỗi dòng đã trả**.
+
+| Trường | Là gì |
+|---|---|
+| `settlementItemId` | **chép NGUYÊN VĂN từ cột `Mã dòng`** của bảng kê — nó nói chúng tôi biết bạn vừa trả cho dòng nào |
+| `redemptionRef` | mã lượt trả **của bạn**. Gửi lại cùng mã ⇒ chúng tôi ghi **đúng một lần**, nên retry luôn an toàn |
+| `amountMinor` | số tiền bạn đã trả, **VND ×1** *(100.000đ ⇒ `100000`)* |
+| `currency` | đồng tiền của số trên |
+
+`occurredAt` của phong bì là **mốc bạn đã trả**, không phải lúc bạn gửi tin.
+
+🔴 **Số tiền phải KHỚP số trên bảng kê.** Lệch một đồng là chúng tôi **từ chối dòng đó và không ghi
+gì** — câu lỗi nêu cả hai số để hai bên đối chiếu. Bảng kê là chứng từ đã đóng dấu, còn tiền thì đã rời
+tay bạn, nên đây là chuyện hai bên nói với nhau chứ không phải chuyện một cái máy quyết.
+
+| Mã lỗi | Nghĩa | Bạn làm gì |
+|---|---|---|
+| `settlement_item_not_found` | mã dòng không có thật | chép lại từ đúng cột `Mã dòng` |
+| `settlement_batch_not_confirmed` | đợt chưa được chốt bên chúng tôi | **gửi lại sau** — không phải lỗi của bạn |
+| `settlement_item_already_confirmed` | dòng này đã được trả bằng một mã khác | dừng, đối chiếu với chúng tôi |
+| `external_payment_amount_drifted` | số tiền lệch bảng kê | đối chiếu rồi gửi lại |
+
+⚠️ **Thiếu `settlementItemId` hoặc `redemptionRef` thì cửa từ chối ngay** *(`422 payload_field_missing`)*.
+Thiếu `amountMinor` thì cửa **nhận** — nhưng lượt đó **không được ghi**, vì không có gì để đối chiếu.
+Luôn gửi đủ bốn trường.
 
 🔴 **`actionKey` do chúng tôi đặt, bạn gửi đúng chuỗi đó.** Nó là thứ duy nhất phân biệt các hành vi
 giao diện với nhau — `UI_ACTION` là **một** loại dùng chung cho mọi hành vi, nên thiếu `actionKey` thì

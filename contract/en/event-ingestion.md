@@ -233,6 +233,7 @@ counted for that reward**. This is **not an error — do not retry it.**
 | `ORDER_COMPLETED` | ✅ | order completed |
 | `ORDER_CANCELLED` | ✅ | order cancelled **or refunded** — one type covers both |
 | `UI_ACTION` | ✅ | a UI behavior on your side, attested by you |
+| `POINT_REDEEMED` | ✅ | **you have paid the player** per the statement we handed over *(opened 2026-09-03)* |
 | `CHECKIN` | ❌ | happens inside our product, we record it ourselves |
 | `STREAK_REACHED` | ❌ | derived by us from check-in streaks, not accepted from you |
 
@@ -258,6 +259,45 @@ integration. `ORDER_CREATED` only moves the recognition point earlier.
 ```jsonc
 { "actionKey": "BRAND_CLICK" }
 ```
+
+`POINT_REDEEMED` — **you paid, you report back** *(opened 2026-09-03)*:
+
+```jsonc
+{
+  "settlementItemId": "3f6a1c22-9d40-4b7e-8a11-2c5e77d09b41",
+  "redemptionRef": "PAYOUT-88213",
+  "amountMinor": 5000,
+  "currency": "VND"
+}
+```
+
+We hand you a **statement**: one line per player, with points, the stamped exchange rate, and the amount
+to pay. You pay, then send **one event per line you paid**.
+
+| Field | What it is |
+|---|---|
+| `settlementItemId` | **copy VERBATIM from the `Mã dòng` (Line ID) column** of the statement — it tells us which line you just paid |
+| `redemptionRef` | **your** payout reference. Resending the same one means we record it **exactly once**, so retries are always safe |
+| `amountMinor` | the amount you paid, **VND ×1** *(100,000đ ⇒ `100000`)* |
+| `currency` | currency of the amount above |
+
+The envelope's `occurredAt` is **when you paid**, not when you send the event.
+
+🔴 **The amount must MATCH the statement.** Off by one đồng and we **reject that line and record
+nothing** — the error names both numbers so the two sides can reconcile. The statement is a stamped
+document and the money has already left your hands, so this is a conversation between two parties, not
+something a machine should decide.
+
+| Error code | Meaning | What you do |
+|---|---|---|
+| `settlement_item_not_found` | the line ID does not exist | re-copy it from the `Mã dòng` column |
+| `settlement_batch_not_confirmed` | the batch is not confirmed on our side yet | **resend later** — not your fault |
+| `settlement_item_already_confirmed` | this line was already paid under a different reference | stop and reconcile with us |
+| `external_payment_amount_drifted` | the amount differs from the statement | reconcile, then resend |
+
+⚠️ **Missing `settlementItemId` or `redemptionRef` is rejected at the door** *(`422
+payload_field_missing`)*. Missing `amountMinor` is **accepted** at the door — but that event is **not
+recorded**, because there is nothing to reconcile against. Always send all four fields.
 
 🔴 **We define `actionKey`; you send that exact string.** It is the only thing that tells UI behaviors
 apart — `UI_ACTION` is **one** type shared by every UI behavior, so without `actionKey` nobody knows
