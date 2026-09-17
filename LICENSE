@@ -1,0 +1,56 @@
+GIẤY PHÉP — HAI PHẦN, HAI CHẾ ĐỘ KHÁC NHAU
+==========================================
+
+Kho này chứa hai loại nội dung, và chúng KHÔNG cùng một giấy phép. Đọc kỹ phần
+áp cho thứ bạn định dùng.
+
+
+────────────────────────────────────────────────────────────────────────────
+① VĂN BẢN HỢP ĐỒNG  —  thư mục `contract/`
+────────────────────────────────────────────────────────────────────────────
+
+Bản quyền © 2026. Mọi quyền được bảo lưu.
+
+ĐƯỢC PHÉP:
+  · đọc, in, lưu nội bộ
+  · chuyển cho đội kỹ thuật và nhà thầu của bạn để thực hiện tích hợp
+  · trích dẫn có ghi nguồn và ghi SỐ BẢN
+
+KHÔNG ĐƯỢC PHÉP:
+  · phát hành bản đã sửa đổi
+  · phát hành lại dưới tên khác, hoặc dưới danh nghĩa một hợp đồng của bên khác
+
+Vì sao chặt ở đây: đây là VĂN BẢN HỢP ĐỒNG. Một bản sửa đổi lưu hành dưới cùng
+cái tên sẽ khiến hai bên tin là mình đang theo cùng một đặc tả trong khi không
+phải — và chỗ lệch chỉ lộ ra lúc có sự cố.
+
+Thấy chỗ sai hoặc thiếu: mở issue. Chúng tôi sửa ở bản gốc rồi phát hành bản mới,
+để MỌI bên cùng nhận.
+
+
+────────────────────────────────────────────────────────────────────────────
+② MÃ NGUỒN  —  thư mục `conformance/` và `examples/`
+────────────────────────────────────────────────────────────────────────────
+
+Giấy phép MIT.
+
+Bản quyền © 2026.
+
+Cho phép bất kỳ ai lấy một bản sao của phần mềm này và các tệp tài liệu liên
+quan ("Phần mềm"), được sử dụng Phần mềm không hạn chế, bao gồm nhưng không giới
+hạn quyền sử dụng, sao chép, sửa đổi, sáp nhập, công bố, phân phối, cấp phép lại
+và/hoặc bán bản sao của Phần mềm, và cho phép người được cung cấp Phần mềm làm
+như vậy, theo các điều kiện sau:
+
+Thông báo bản quyền trên và thông báo cấp phép này phải được đưa vào tất cả các
+bản sao hoặc phần đáng kể của Phần mềm.
+
+PHẦN MỀM ĐƯỢC CUNG CẤP "NGUYÊN TRẠNG", KHÔNG CÓ BẢO ĐẢM DƯỚI BẤT KỲ HÌNH THỨC
+NÀO, RÕ RÀNG HAY NGỤ Ý, BAO GỒM NHƯNG KHÔNG GIỚI HẠN Ở CÁC BẢO ĐẢM VỀ KHẢ NĂNG
+BÁN ĐƯỢC, SỰ PHÙ HỢP CHO MỘT MỤC ĐÍCH CỤ THỂ VÀ KHÔNG VI PHẠM. TRONG MỌI TRƯỜNG
+HỢP, CÁC TÁC GIẢ HOẶC CHỦ SỞ HỮU BẢN QUYỀN KHÔNG CHỊU TRÁCH NHIỆM VỀ BẤT KỲ KHIẾU
+NẠI, THIỆT HẠI HAY TRÁCH NHIỆM PHÁP LÝ NÀO.
+
+Vì sao rộng ở đây: bộ kiểm và ví dụ sinh ra để bạn CHÉP THẲNG vào sản phẩm của
+mình. Buộc phải hỏi trước khi chép là làm chậm đúng thứ chúng tôi muốn bạn làm
+nhanh.
