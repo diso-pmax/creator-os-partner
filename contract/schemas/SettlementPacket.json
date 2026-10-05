@@ -1,0 +1,63 @@
+{
+  "type": "object",
+  "properties": {
+    "settlementRef": {
+      "type": "string",
+      "minLength": 1
+    },
+    "settlementItemId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "partyId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "externalUserId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "denominationCode": {
+      "type": "string",
+      "minLength": 1
+    },
+    "pointAmount": {
+      "type": "string",
+      "pattern": "^-?\\d+(\\.\\d+)?$"
+    },
+    "exchangeRateSnapshot": {
+      "type": "string",
+      "pattern": "^-?\\d+(\\.\\d+)?$"
+    },
+    "moneyAmount": {
+      "type": "string",
+      "pattern": "^-?\\d+(\\.\\d+)?$"
+    },
+    "moneyCurrency": {
+      "type": "string",
+      "pattern": "^[A-Z]{3}$"
+    },
+    "deliveryNonce": {
+      "type": "string",
+      "minLength": 1
+    }
+  },
+  "required": [
+    "settlementRef",
+    "settlementItemId",
+    "partyId",
+    "denominationCode",
+    "pointAmount",
+    "exchangeRateSnapshot",
+    "moneyAmount",
+    "moneyCurrency",
+    "deliveryNonce"
+  ],
+  "additionalProperties": false,
+  "title": "SettlementPacket",
+  "description": "The packet WE send to your settlement endpoint (see webhooks.settlementDelivery). Ignore fields you do not recognize: we may add fields without a new contract version.",
+  "x-serverSideChecks": [
+    "amounts are decimal strings, already settled and frozen: do not recompute them",
+    "deliveryNonce is new on every real call; you MUST reject a nonce you have already seen (409)"
+  ]
+}

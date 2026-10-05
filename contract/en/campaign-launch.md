@@ -88,7 +88,7 @@ secret only grants the capability to request launches — it never grants event 
 ## 4. Step 1 — Create a Launch Grant
 
 ```text
-POST https://<our sandbox host>/api/v1/campaigns/:campaignId/launch
+POST https://<the host of the environment you are using>/api/v1/campaigns/:campaignId/launch
 Content-Type: application/json
 ```
 
@@ -101,11 +101,12 @@ integration), not something enforced by a technical mechanism you can observe.
 | Field | Where | Type | Required | Description |
 |---|---|---|:--:|---|
 | `campaignId` | URL path | string | **YES** | the campaign you want to launch |
-| `externalUserId` | JSON body | string | **YES** | 🔴 the same identifier you use as `externalUserId` on the EVENT channel for this user — see §7 |
+| `externalUserId` | JSON body | string | **YES** | 🔴 the same identifier you use as `externalUserId` on the EVENT channel for this user — see §7. Must not contain control characters (NUL, tab, newline, DEL…): a value that does is refused with `400 validation_error` and no launch is created |
+| `displayName` | JSON body | string or `null` | no | a **suggested** display name for this player, at most 256 characters. It is only a suggestion: if it does not pass our naming policy it is dropped and the launch still succeeds. Wrong type or over the length limit is a `400` |
 
 ```jsonc
 // POST /api/v1/campaigns/camp_01J.../launch
-{ "externalUserId": "usr_4471" }
+{ "externalUserId": "usr_4471", "displayName": "Alex" }   // displayName is optional
 ```
 
 ### 4.2 Response
@@ -127,6 +128,8 @@ across two hosts.
 ⇒ **Nothing changes for you** (still just open `launchUrl` verbatim in the WebView), but if you run the
 **conformance suite**, the machine running it must be able to **reach the reward portal host**, not
 only the API host.
+
+Building the app that hosts the web view? Read [webview.md](./webview.md): the cookie set on the redirect, and the native bridge.
 
 `launchUrl` is only valid until `expiresAt` — **60 seconds** from creation in this version (v1
 parameter, not a protocol invariant — see §6, item 4). Open it in the user's WebView immediately; do
@@ -161,8 +164,13 @@ The session cookie, its 8-hour lifetime, and the economic subject it resolves to
 mechanism used everywhere else in this integration — LAUNCH only changes how the session gets
 established.
 
-**Failure:** `401 INVALID_LAUNCH_CODE` — see §8. No neutral HTML error page is defined for this version;
-if you need a specific fallback UX in the WebView, build it on your own side around this status code.
+**Failure:** `401 INVALID_LAUNCH_CODE` — see §8. When the link is opened by a player's browser (a normal page
+navigation), the player is instead redirected (`302`) to the game's own "this link is no longer valid"
+screen, with a button back to your app, so they never see a raw error. Your server-side calls still get the `401`.
+A client whose `Accept` header contains `text/html` is treated as a browser; some HTTP libraries (for example Java's
+`HttpURLConnection`) send `text/html` by default, so set `Accept: application/json` explicitly if you ever call this
+URL yourself. **Your server must not call `GET /launch` at all**: it consumes the one-time ticket, so the player's
+browser would then find it already used. Responses carry `Vary: Accept` and `Cache-Control: no-store`.
 
 ⚠️ **No HMAC is required — and none is checked — on this call.** This is intentional, not an oversight:
 the opaque `code` in the URL **is itself the one-time credential**. See §6 for the full list of

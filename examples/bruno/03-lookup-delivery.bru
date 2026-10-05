@@ -1,0 +1,29 @@
+meta {
+  name: Look up the receipt of an event
+  type: http
+  seq: 3
+}
+
+post {
+  url: {{baseUrl}}/integrations/deliveries
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+vars:pre-request {
+  channel: EVENT
+}
+
+body:json {
+  {
+    "externalId": "evt-REPLACE-WITH-AN-EVENT-ID-YOU-SENT"
+  }
+}
+
+docs {
+  Send EXACTLY ONE of deliveryId or externalId.
+}

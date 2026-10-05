@@ -1,0 +1,33 @@
+meta {
+  name: Send one event
+  type: http
+  seq: 1
+}
+
+post {
+  url: {{baseUrl}}/integrations/events
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+vars:pre-request {
+  channel: EVENT
+}
+
+body:json {
+  {
+    "eventId": "evt-{{stamp}}",
+    "externalUserId": "{{externalUserId}}",
+    "type": "{{eventType}}",
+    "occurredAt": "{{now}}",
+    "payload": { "orderId": "SO-{{stamp}}", "amountMinor": 100000, "currency": "VND" }
+  }
+}
+
+assert {
+  res.status: eq 200
+}

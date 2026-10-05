@@ -92,7 +92,7 @@ máy chủ của bạn, và không mang HMAC — xem §5 vì sao điều đó v�
 **Ví dụ chạy được:**
 
 ```bash
-API='https://<host của môi trường bạn dùng>/api/v1'   # xem bảng môi trường ở README.md
+API='https://<host của môi trường bạn đang dùng>/api/v1'   # xem bảng môi trường ở README.md
 ACCESS_KEY='<accessKey chúng tôi cấp>'
 MASTER_SECRET='<masterSecret — base64url 43 ký tự>'
 LAUNCH_VERSION=1
@@ -130,7 +130,7 @@ event.
 ## 4. Bước 1 — Tạo Launch Grant
 
 ```text
-POST https://<host sandbox của chúng tôi>/api/v1/campaigns/:campaignId/launch
+POST https://<host của môi trường bạn đang dùng>/api/v1/campaigns/:campaignId/launch
 Content-Type: application/json
 ```
 
@@ -143,11 +143,12 @@ này), không phải thứ chặn được 100% bằng cơ chế kỹ thuật b�
 | Trường | Ở đâu | Kiểu | Bắt buộc | Mô tả |
 |---|---|---|:--:|---|
 | `campaignId` | URL path | string | **CÓ** | campaign bạn muốn launch |
-| `externalUserId` | JSON body | string | **CÓ** | 🔴 đúng định danh bạn dùng làm `externalUserId` ở kênh EVENT cho người dùng này — xem §7 |
+| `externalUserId` | JSON body | string | **CÓ** | 🔴 đúng định danh bạn dùng làm `externalUserId` ở kênh EVENT cho người dùng này — xem §7. Không được chứa ký tự điều khiển (NUL, tab, xuống dòng, DEL…): giá trị có chúng bị từ chối bằng `400 validation_error` và không tạo launch nào |
+| `displayName` | JSON body | string hoặc `null` | không | tên hiển thị **gợi ý** cho người chơi này, tối đa 256 ký tự. Chỉ là gợi ý: nếu không qua chính sách đặt tên của chúng tôi thì bị bỏ và launch vẫn thành công. Sai kiểu hoặc quá độ dài là `400` |
 
 ```jsonc
 // POST /api/v1/campaigns/camp_01J.../launch
-{ "externalUserId": "usr_4471" }
+{ "externalUserId": "usr_4471", "displayName": "Alex" }   // displayName là tuỳ chọn
 ```
 
 ### 4.2 Response
@@ -167,6 +168,8 @@ tôi dùng **cấm** thuộc tính `Domain` — nên không có cách nào chia 
 
 ⇒ Bạn **không phải làm gì thêm** *(vẫn chỉ mở nguyên `launchUrl` trong WebView)*, nhưng nếu bạn chạy
 **bộ kiểm hợp chuẩn** thì máy chạy nó phải **với tới được host cổng thưởng**, không chỉ host API.
+
+Bạn dựng app chứa web view? Đọc [webview.md](./webview.md): cookie đặt trên lượt chuyển hướng, và cầu nối native.
 
 `launchUrl` chỉ hợp lệ tới `expiresAt` — **60 giây** kể từ lúc tạo ở bản này (tham số v1, không phải bất
 biến giao thức — xem §6, mục 4). Mở nó trong WebView của người dùng ngay lập tức — đừng cache hay trì
@@ -200,8 +203,13 @@ Set-Cookie: __Host-player_session=<JWT>; HttpOnly; Secure; SameSite=Lax   // h�
 Cookie phiên, vòng đời 8 giờ của nó, và economic subject nó resolve tới (**Party**) là cùng cơ chế dùng
 ở mọi nơi khác trong tích hợp này — LAUNCH chỉ đổi cách session được establish.
 
-**Thất bại:** `401 INVALID_LAUNCH_CODE` — xem §8. Bản này chưa định nghĩa trang lỗi HTML trung tính;
-nếu bạn cần một UX dự phòng cụ thể trong WebView, tự xây phía bạn dựa trên status code này.
+**Thất bại:** `401 INVALID_LAUNCH_CODE` — xem §8. Khi link được mở bằng trình duyệt của người chơi (điều hướng trang
+bình thường), người chơi được chuyển (`302`) sang màn "link không còn dùng được" của chính game, kèm nút quay lại
+ứng dụng của bạn, nên không bao giờ thấy lỗi thô. Các lệnh gọi từ máy chủ của bạn vẫn nhận `401`.
+Client gửi header `Accept` có `text/html` được xem là trình duyệt; một số thư viện HTTP (ví dụ `HttpURLConnection` của
+Java) mặc định gửi `text/html`, nên hãy đặt rõ `Accept: application/json` nếu bạn tự gọi URL này. **Máy chủ của bạn
+không được gọi `GET /launch`**: lệnh gọi đó tiêu thụ vé một lần, khiến trình duyệt của người chơi thấy vé đã dùng.
+Phản hồi mang `Vary: Accept` và `Cache-Control: no-store`.
 
 ⚠️ **Lượt gọi này KHÔNG cần — và không kiểm — HMAC.** Đây là cố ý, không phải thiếu sót: `code` mờ trong
 URL **tự nó là credential dùng một lần**. Xem §6 để biết đầy đủ các bảo đảm khiến điều đó an toàn.

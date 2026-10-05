@@ -405,8 +405,12 @@ export function taoLaunch(
   goi: GoiHttp,
   campaignId: string,
   externalUserId: string,
+  // Optional partner-side name suggestion. Omitted ⇒ the body stays exactly
+  // `{"externalUserId":...}`, so every existing caller signs the same bytes as before.
+  displayName?: string,
 ): Promise<PhanHoi> {
-  const raw = JSON.stringify({ externalUserId });
+  // The signature is computed over this exact string and the same string is sent as the body.
+  const raw = JSON.stringify(displayName === undefined ? { externalUserId } : { externalUserId, displayName });
   const ts = String(Math.floor(Date.now() / 1000));
   return goi(`${cf.cuaNenTang}/campaigns/${campaignId}/launch`, {
     method: 'POST',
@@ -603,3 +607,214 @@ const LAUNCH: Ca[] = [
 
 export const CA_LAUNCH: readonly Ca[] = LAUNCH;
 export const SO_CA_LAUNCH = LAUNCH.length;
+
+// ── SETTLEMENT — 8 cases ────────────────────────────────────────────────────────────────
+//
+// 🔴 A THIRD, INDEPENDENT axis, same as LAUNCH: it never feeds the entry gate or the recovery rank.
+//
+// Direction: the suite plays the PLATFORM. It signs `PartnerSettlementSignatureV1` and calls YOUR receiver
+// (`CONF_SETTLEMENT_URL`). It moves no points and changes nobody's balance: the numbers in the packet are
+// fixtures.
+//
+// Signing string (contract/en/settlement.md section 3):
+//   <timestamp> "." "POST" "." <path + query exactly as on the request line> "." <raw body>
+//
+// Inline on purpose, like every other helper in this file: copying three files must keep working.
+
+/** Same freshness window as the platform: +-5 minutes. */
+const SETTLEMENT_FRESHNESS_MS = 5 * 60_000;
+/** The platform gives up after 10 s. */
+const SETTLEMENT_REPLY_BUDGET_MS = 10_000;
+
+/** `PartnerSettlementSignatureV1` — HMAC-SHA256 over `ts.POST.path.rawBody`, `sha256=<hex>`. */
+export function kySettlement(secret: string, tsSeconds: number, method: string, pathAndQuery: string, rawBody: string): string {
+  const base = Buffer.concat([
+    Buffer.from(`${tsSeconds}.${method.toUpperCase()}.${pathAndQuery}.`, 'utf8'),
+    Buffer.from(rawBody, 'utf8'),
+  ]);
+  return `sha256=${createHmac('sha256', secret).update(base).digest('hex')}`;
+}
+
+/** A settlement packet as the platform sends it (contract/en/settlement.md section 2.1). Fixture numbers only. */
+function goiSettlement(over: Record<string, unknown> = {}): Record<string, unknown> {
+  return {
+    settlementRef: `CONF-${randomUUID().slice(0, 8)}`,
+    settlementItemId: `conf-item-${randomUUID()}`,
+    partyId: `conf-party-${randomUUID().slice(0, 8)}`,
+    denominationCode: 'CONF_POINT',
+    pointAmount: '100',
+    exchangeRateSnapshot: '10',
+    moneyAmount: '1000',
+    moneyCurrency: 'VND',
+    deliveryNonce: `conf-nonce-${randomUUID()}`,
+    ...over,
+  };
+}
+
+/** Sign and POST one packet to the partner's receiver. `bad` lets a case break exactly one thing. */
+async function banSettlement(
+  cf: CauHinh,
+  goi: GoiHttp,
+  than: Record<string, unknown>,
+  bad?: { signature?: string; tsSeconds?: number; redirect?: 'follow' | 'manual'; timeoutMs?: number; secret?: string },
+): Promise<PhanHoi> {
+  if (!cf.settlementUrl || !cf.settlementSecret) throw new Error('settlementUrl and settlementSecret are required for the SETTLEMENT cases');
+  const u = new URL(cf.settlementUrl);
+  const pathAndQuery = `${u.pathname}${u.search}`;
+  const raw = JSON.stringify(than);
+  const ts = bad?.tsSeconds ?? Math.floor(Date.now() / 1000);
+  return goi(cf.settlementUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Platform-Key-Id': cf.settlementKeyId ?? 'conformance-settlement',
+      'X-Platform-Timestamp': String(ts),
+      'X-Platform-Signature': bad?.signature ?? kySettlement(bad?.secret ?? cf.settlementSecret, ts, 'POST', pathAndQuery, raw),
+    },
+    body: raw,
+    redirect: bad?.redirect ?? 'manual',
+    timeoutMs: bad?.timeoutMs,
+  });
+}
+
+const is2xx = (r: PhanHoi): boolean => r.status >= 200 && r.status < 300;
+/** The contract lists `401`/`403` for a bad signature; both are an honest refusal. */
+const isAuthRefusal = (r: PhanHoi): boolean => r.status === 401 || r.status === 403;
+
+const SETTLEMENT: Ca[] = [
+  {
+    ma: 'SETTLEMENT-1',
+    chieu: 'SETTLEMENT',
+    ten: 'valid packet => 2xx',
+    capNangLuc: null,
+    async chay(cf, goi) {
+      // Positive control of the whole axis: without it, a receiver that refuses everything passes the other seven.
+      const r = await banSettlement(cf, goi, goiSettlement());
+      return is2xx(r) ? dat() : truot(`expected 2xx, got ${r.status}`);
+    },
+  },
+  {
+    ma: 'SETTLEMENT-2',
+    chieu: 'SETTLEMENT',
+    ten: 'same deliveryNonce, freshly signed => 409',
+    capNangLuc: null,
+    async chay(cf, goi) {
+      const than = goiSettlement();
+      const first = await banSettlement(cf, goi, than);
+      if (!is2xx(first)) return truot(`could not deliver the first packet (got ${first.status}), nothing to replay`);
+      // A new timestamp changes the signature bytes: the receiver must dedupe on the NONCE, not on the signature.
+      const replay = await banSettlement(cf, goi, than, { tsSeconds: Math.floor(Date.now() / 1000) + 1 });
+      return replay.status === 409
+        ? dat()
+        : truot(`expected 409 for a nonce already seen, got ${replay.status}; dedupe on deliveryNonce, not on signature or timestamp`);
+    },
+  },
+  {
+    ma: 'SETTLEMENT-3',
+    chieu: 'SETTLEMENT',
+    ten: 'ask again: identical request, same nonce => 409 (read as "already received")',
+    capNangLuc: null,
+    async chay(cf, goi) {
+      // The platform's "Ask the partner again" resends the SAME packet with the SAME nonce and reads 409 as
+      // "you already have it". A receiver that answers anything else there makes ops resend a settled amount.
+      const than = goiSettlement();
+      const ts = Math.floor(Date.now() / 1000);
+      const first = await banSettlement(cf, goi, than, { tsSeconds: ts });
+      if (!is2xx(first)) return truot(`could not deliver the first packet (got ${first.status}), nothing to ask about`);
+      const again = await banSettlement(cf, goi, than, { tsSeconds: ts });
+      return again.status === 409
+        ? dat()
+        : truot(`expected 409 when the very same packet arrives again, got ${again.status}; "ask again" depends on it`);
+    },
+  },
+  {
+    ma: 'SETTLEMENT-4',
+    chieu: 'SETTLEMENT',
+    ten: 'wrong signature => 401',
+    capNangLuc: null,
+    async chay(cf, goi) {
+      const r = await banSettlement(cf, goi, goiSettlement(), { signature: `sha256=${'0'.repeat(64)}` });
+      return isAuthRefusal(r) ? dat() : truot(`expected 401 (403 accepted), got ${r.status}; a packet with a bad signature must never be processed`);
+    },
+  },
+  {
+    ma: 'SETTLEMENT-5',
+    chieu: 'SETTLEMENT',
+    ten: 'timestamp older than 5 minutes (correctly signed) => 401',
+    capNangLuc: null,
+    async chay(cf, goi) {
+      const stale = Math.floor((Date.now() - 2 * SETTLEMENT_FRESHNESS_MS) / 1000);
+      // Signed with the stale timestamp, so ONLY the freshness window can reject it.
+      const r = await banSettlement(cf, goi, goiSettlement(), { tsSeconds: stale });
+      return isAuthRefusal(r) ? dat() : truot(`expected 401 (403 accepted) for a stale timestamp, got ${r.status}; enforce the +-5 minute window`);
+    },
+  },
+  {
+    ma: 'SETTLEMENT-6',
+    chieu: 'SETTLEMENT',
+    ten: 'same settlementItemId, new nonce => 2xx (do not dedupe on settlementItemId)',
+    capNangLuc: null,
+    async chay(cf, goi) {
+      const itemId = `conf-item-${randomUUID()}`;
+      const first = await banSettlement(cf, goi, goiSettlement({ settlementItemId: itemId }));
+      if (!is2xx(first)) return truot(`could not deliver the first packet (got ${first.status})`);
+      // Our ops pressing "Retry" sends the same item with a NEW nonce; refusing it blocks a legitimate retry.
+      const retry = await banSettlement(cf, goi, goiSettlement({ settlementItemId: itemId }));
+      return is2xx(retry)
+        ? dat()
+        : truot(`expected 2xx for the same settlementItemId with a new nonce, got ${retry.status}; your dedupe key must be deliveryNonce`);
+    },
+  },
+  {
+    ma: 'SETTLEMENT-7',
+    chieu: 'SETTLEMENT',
+    ten: 'replies within 10 seconds',
+    capNangLuc: null,
+    async chay(cf, goi) {
+      const t0 = Date.now();
+      const r = await banSettlement(cf, goi, goiSettlement(), { timeoutMs: SETTLEMENT_REPLY_BUDGET_MS });
+      const ms = Date.now() - t0;
+      if (!is2xx(r)) return truot(`expected 2xx, got ${r.status}`);
+      return ms <= SETTLEMENT_REPLY_BUDGET_MS ? dat(`${ms} ms`) : truot(`took ${ms} ms; the platform gives up after ${SETTLEMENT_REPLY_BUDGET_MS} ms`);
+    },
+  },
+  {
+    ma: 'SETTLEMENT-8',
+    chieu: 'SETTLEMENT',
+    ten: 'does not answer with a redirect (3xx)',
+    capNangLuc: null,
+    async chay(cf, goi) {
+      // The platform never follows 3xx. A receiver behind a redirect (http->https, trailing slash) looks dead to it.
+      const r = await banSettlement(cf, goi, goiSettlement(), { redirect: 'manual' });
+      if (r.status >= 300 && r.status < 400) {
+        return truot(`got ${r.status}${r.headers['location'] ? ` to ${r.headers['location']}` : ''}; declare the FINAL url as your settlement endpoint`);
+      }
+      return is2xx(r) ? dat() : truot(`expected 2xx, got ${r.status}`);
+    },
+  },
+];
+
+/**
+ * The rotation case. It is NOT one of the eight: it only runs when `settlementPreviousSecret` is set, because it needs the
+ * OLD secret, which only the integrator has. Signed with the previous secret under the SAME `X-Platform-Key-Id` as the
+ * other cases (the platform keeps the key id across rotations), so a receiver that picks ONE secret per key id fails here.
+ */
+export const CA_SETTLEMENT_ROTATION: Ca = {
+  ma: 'SETTLEMENT-9',
+  chieu: 'SETTLEMENT',
+  ten: 'signed with the PREVIOUS secret under the same key id => 2xx (rotation overlap)',
+  capNangLuc: null,
+  async chay(cf, goi) {
+    if (!cf.settlementPreviousSecret) return truot('CONF_SETTLEMENT_PREVIOUS_SECRET is not set');
+    const r = await banSettlement(cf, goi, goiSettlement(), { secret: cf.settlementPreviousSecret });
+    return is2xx(r)
+      ? dat()
+      : truot(
+          `expected 2xx for a packet signed with the previous secret, got ${r.status}; while a rotation is in flight keep BOTH ` +
+            'secrets under the same X-Platform-Key-Id and try them newest first',
+        );
+  },
+};
+
+export const CA_SETTLEMENT: readonly Ca[] = SETTLEMENT;
+export const SO_CA_SETTLEMENT = SETTLEMENT.length;

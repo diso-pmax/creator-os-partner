@@ -25,7 +25,7 @@ whether you satisfy the contract, then onboard. **You do not need to wait for us
 ### 1.1 Run it
 
 ```bash
-CONF_API=https://<our sandbox host>/api/v1 \
+CONF_API=https://<the host of the test environment we gave you>/api/v1 \
 CONF_ACCESS_KEY=<your access key> \
 CONF_MASTER_SECRET=<your masterSecret — 43-char base64url> \
 CONF_EVENT_TYPE=ORDER_COMPLETED \
@@ -174,6 +174,90 @@ to find your own bugs before that review.
 
 ---
 
+### 1.6 SETTLEMENT channel — 8 cases, run separately
+
+If you receive settled point amounts ([settlement.md](./settlement.md)), test **your receiver** the same
+way. The suite plays the platform: it signs `PartnerSettlementSignatureV1` and calls the URL you give it. It
+moves no points and changes nobody's balance — the amounts in the packets are fixtures.
+
+```bash
+CONF_SETTLEMENT_URL=https://your-host.example/settlements \
+CONF_SETTLEMENT_SECRET=<your SETTLEMENT channel secret> \
+  npx tsx run.ts
+```
+
+| Variable | Required | Note |
+|---|:--:|---|
+| `CONF_SETTLEMENT_URL` | to run the axis | absent ⇒ the SETTLEMENT cases are reported as **not run** (never as passed) |
+| `CONF_SETTLEMENT_SECRET` | ✅ when the URL is set | or set `CONF_MASTER_SECRET` and the suite derives the SETTLEMENT key itself (`CONF_SETTLEMENT_VERSION` picks the version, default `1`) |
+| `CONF_SETTLEMENT_KEY_ID` | no | sent as `X-Platform-Key-Id`; default `conformance-settlement` |
+| `CONF_SETTLEMENT_PREVIOUS_SECRET` | no | the secret a rotation replaces. When set, the suite adds a **ninth** case, `SETTLEMENT-9` (below) |
+
+| Case | Scenario | Expected |
+|---|---|---|
+| `SETTLEMENT-1` | valid packet | `2xx` |
+| `SETTLEMENT-2` | the same `deliveryNonce` again, freshly signed | `409` |
+| `SETTLEMENT-3` | "ask again": the very same request, same nonce | `409` |
+| `SETTLEMENT-4` | wrong signature | `401` (`403` accepted) |
+| `SETTLEMENT-5` | timestamp older than 5 minutes, correctly signed | `401` (`403` accepted) |
+| `SETTLEMENT-6` | same `settlementItemId`, new nonce | `2xx` — do not dedupe on `settlementItemId` |
+| `SETTLEMENT-7` | reply time | within 10 seconds |
+| `SETTLEMENT-8` | redirect | no `3xx`; declare the final URL |
+| `SETTLEMENT-9` *(optional)* | signed with the **previous** secret, under the **same** `X-Platform-Key-Id` | `2xx` — during a rotation your receiver must keep BOTH secrets and try them newest first |
+
+`SETTLEMENT-9` runs only when `CONF_SETTLEMENT_PREVIOUS_SECRET` is set, so the eight cases above stay eight. The key id does not change between versions (see [settlement.md §3](./settlement.md#3-we-authenticate-ourselves-to-you--partnersettlementsignaturev1)), which is why a receiver that picks one secret per key id fails this case.
+
+`SETTLEMENT-3` matters more than it looks: when our operations team presses **Ask the partner again**, we
+resend the same packet with the same nonce and read `409` as "you already received it". Any other answer
+there can make us send a settled amount twice.
+
+**A reference receiver is included**: `examples/node/settlement-receiver.mjs`
+(Node, no dependencies, MIT). It passes all 8 cases, remembers nonces in a JSON file across restarts, and
+prints every accepted packet. During a key rotation give it both secrets, newest first: `SETTLEMENT_SECRETS=<new>,<old>`. Check it without a network: `node examples/node/settlement-receiver.mjs --self-test`.
+
+`SETTLEMENT-2` and `SETTLEMENT-3` require **`409`** specifically for a repeated nonce: our "Ask the partner again" reads `409` as "already received". Answering `400`, `422` or an idempotent `200` instead makes those two cases fail.
+
+Behind a reverse proxy, verify the signature against the path and query exactly as we sent them; a proxy that rewrites the path turns every call into `401`.
+
+⚠️ SETTLEMENT results are printed in their own block and are **not** part of the automated go-live gate in §1.3. The process still exits non-zero when a SETTLEMENT case fails, so treat that exit code accordingly in your own CI.
+
+### 1.7 Send yourself a test settlement notification (sandbox only)
+
+Instead of waiting for our operations team to press **Send**, you can ask the sandbox to send **one sample
+settlement notification** to the address you gave us ([settlement.md §2.0](./settlement.md)).
+It exists **only on the sandbox**: on any other cluster this route does not exist and answers `404`.
+
+```bash
+BODY='{}'
+TS=$(date +%s)
+SIG="sha256=$(printf '%s.%s' "$TS" "$BODY" | openssl dgst -sha256 -hmac "$EVENT_KEY" -r | cut -d' ' -f1)"
+curl -sS -X POST "https://<the host of the test environment we gave you>/api/v1/integrations/settlement/test" \
+  -H "Content-Type: application/json" -H "X-API-Key: $ACCESS_KEY" \
+  -H "X-Timestamp: $TS" -H "X-Signature: $SIG" -d "$BODY"
+```
+
+It is signed like an event, with your **EVENT** channel key ([event-ingestion.md §3](./event-ingestion.md#3-authentication)); the
+body is `{}`. You do not pass an address: we send to the one our operations team declared for your integration.
+
+| Answer | Meaning |
+|---|---|
+| `{ "outcome": "SENT_OK", "httpStatus": 200, "code": "sent" }` | your receiver answered `2xx` |
+| `PARTNER_REJECTED` · `partner_rejected` | your receiver answered `409` or `422`. On the first test it must answer `2xx` |
+| `SEND_FAILED_HTTP` · `partner_unexpected_status` | any other code. Only `2xx` is "received" |
+| `SEND_FAILED_TIMEOUT` · `partner_unreachable` | no answer in 10 seconds, a connection error, or a redirect |
+| `NOT_CONFIGURED` · `not_ready_integration` · `not_ready_endpoint` · `not_ready_key` · `not_ready_namespace` | the integration is not ready to send points yet: ask our operations team to finish the address and keys |
+| `429` | more than 6 test sends in a minute: wait for `Retry-After` |
+
+What the sample looks like: the same packet as [settlement.md §2.1](./settlement.md#21-request-body), signed with your
+SETTLEMENT key, with batch reference starting **`SANDBOX-`**, `externalUserId` `sandbox-user` and a denomination that
+does not exist. **It is not a real line: do not book it in your own accounting.** It opens no batch on our side and
+changes nobody's balance.
+
+What to check on your side: the first test send is answered `2xx`; the same `deliveryNonce` repeated is answered `409`
+(the cases of §1.6 check this); the signature is verified on the raw body.
+
+---
+
 ## 2. Test vectors
 
 Fixed numbers for **unit-testing your signing function** — no network, no real keys needed. A single
@@ -264,7 +348,33 @@ printf '%s.%s' 1786701000 '{"externalUserId":"ext-user-000001"}' \
 
 # reconciliation digest (§2.4)
 printf 'evt-1\nevt-2\nevt-3' | openssl dgst -sha256 -r | cut -d' ' -f1
+
+# SETTLEMENT channel (§2.6) — method and path are signed too
+printf '%s.POST.%s.%s' 1786698753 '/hooks/settlement?src=bank-a' '{"settlementRef":"SR-2026-09-camp-01","settlementItemId":"5b0d8e7a-3c41-4f6a-9b52-7a1e0c9d2f64","partyId":"0b8a6f2e-1d34-4c57-8e90-a3b5c7d9e1f2","externalUserId":"12345","denominationCode":"PTS","pointAmount":"100","exchangeRateSnapshot":"10","moneyAmount":"1000","moneyCurrency":"VND","deliveryNonce":"9c1f4a7e-52b8-4d03-a6e9-0f3b8d2c7a15"}' \
+  | openssl dgst -sha256 -hmac 'stl_demo_0123456789abcdef' -r | cut -d' ' -f1
 ```
+
+### 2.6 SETTLEMENT channel — `PartnerSettlementSignatureV1`
+
+We call **you**, so this is the signature you **verify**. Same shape as RECOVERY (§2.3) — method and
+path are part of the signing string — but with a body, and with the SETTLEMENT secret.
+
+```text
+secret     :  stl_demo_0123456789abcdef
+timestamp  :  1786698753
+method     :  POST
+path       :  /hooks/settlement?src=bank-a
+body       :  {"settlementRef":"SR-2026-09-camp-01","settlementItemId":"5b0d8e7a-3c41-4f6a-9b52-7a1e0c9d2f64","partyId":"0b8a6f2e-1d34-4c57-8e90-a3b5c7d9e1f2","externalUserId":"12345","denominationCode":"PTS","pointAmount":"100","exchangeRateSnapshot":"10","moneyAmount":"1000","moneyCurrency":"VND","deliveryNonce":"9c1f4a7e-52b8-4d03-a6e9-0f3b8d2c7a15"}
+             (341 bytes, NO trailing newline)
+
+signing string :  1786698753.POST./hooks/settlement?src=bank-a.{"settlementRef":"SR-2026-09-camp-01",…}
+
+RESULT     :  sha256=8ddc17d7f9971d337114de47b256c2bacd0c1bd333ca0b566eb3569927f1c67b
+```
+
+⚠️ **The query string is part of the path** — `?src=bank-a` is signed. Verify against the path and query
+exactly as they appear on the request line. ⚠️ **The body is signed as raw bytes**, including
+`externalUserId` and `deliveryNonce`; do not parse and re-serialize it before verifying.
 
 ---
 
@@ -284,9 +394,10 @@ time, with **zero dropped requests** — this is not a scheduled cutover.
 the instant it is revoked. ⇒ Move **every** server to the new secret **before** telling us to revoke the
 old one.
 
-⭐ On the reverse direction ([recovery.md § We authenticate ourselves to you](./recovery.md)),
-you accept **two** secrets as valid at once and look one up by `X-Platform-Key-Id` — same mechanism, roles
-reversed.
+⭐ The reverse direction ([recovery.md](./recovery.md), [settlement.md](./settlement.md)) is **not** the same mechanism.
+`X-Platform-Key-Id` stays the same across versions, and we sign with the **new** key the moment a rotation completes. Derive
+and load the new version **before** it completes (it is always the current one plus one), accept both secrets and try
+them newest first, and expect a short window of `401` if you were late.
 
 This applies independently per channel — rotating the EVENT secret does not affect the LAUNCH secret, and
 vice versa.
@@ -295,50 +406,5 @@ vice versa.
 
 ## 4. Production checklist
 
-Check every box before enabling this integration against real users. 🔒 items are security-critical.
-
-### 4.1 EVENT channel
-
-**Signing and authentication**
-
-- [ ] Your signing function produces **exactly** the result in [§2.1](#21-event-channel--eventingresssignaturev1) — covered by a unit test that pins this vector
-- [ ] Serialize **exactly once**: the string you sign **is** the string you send ([event-ingestion.md § Most common bug](./event-ingestion.md))
-- [ ] 🔒 The signing secret lives on the **server**, not a mobile app, browser, or source repository
-- [ ] 🔒 The EVENT channel secret is **different** from the LAUNCH channel secret — no shared signing function
-- [ ] Server clock is NTP-synced, drift under 1 minute
-
-**Payload correctness**
-
-- [ ] `eventId` is generated per **business event**, not per HTTP call — conformance vector #2 ([event-ingestion.md §4](./event-ingestion.md#4-conformance-vectors--three-requests-to-fire-in-order)) returned `deduplicated: true`
-- [ ] `orderId` is a **string**, not a number
-- [ ] `occurredAt` is **when it happened**, not when you send it
-- [ ] You know your two `occurredAt` limits — lateness and future skew — and your **worst-case** delivery lag (queue backlog, nightly batch, an outage you have actually had) fits inside the lateness one ([event-ingestion.md §5.4](./event-ingestion.md#54-occurredat--the-two-deadlines))
-- [ ] 🔒 A `422 event_too_late` or `event_from_future` **never** makes your code mint a new `eventId` and resend — that turns one late event into two economic events
-- [ ] `amountMinor` is an **integer in the smallest currency unit**, paired with `currency`
-- [ ] An order moving through multiple states produces **multiple `eventId`s**, sharing one `orderId`
-
-**Operations**
-
-- [ ] You handle `429`: read `Retry-After`, **wait, then resend unchanged**
-- [ ] `RateLimit-Reset` is treated as **seconds**, not an epoch timestamp
-- [ ] Exponential backoff exists for `5xx` and network timeouts
-- [ ] `422` is **not** blindly retried — it goes to a dead-letter queue or pages someone
-- [ ] `deliveryId` is recorded on every attempt, including `422`s
-- [ ] There is an alert on a sudden rise in `401` rate — a signal of a revoked key or clock drift
-
-**Go-live**
-
-- [ ] Conformance suite **inbound 8/8 passing** ([§1.3](#13-fifteen-cases--two-directions-measure-two-different-things)) — this is the go-live gate
-- [ ] The three conformance vectors ([event-ingestion.md §4](./event-ingestion.md#4-conformance-vectors--three-requests-to-fire-in-order)) have been run against **sandbox** first
-
-### 4.2 LAUNCH channel
-
-See the full checklist in
-[campaign-launch.md §9](./campaign-launch.md#9-security-requirements) — not duplicated here.
-
-### 4.3 Cross-channel
-
-- [ ] `externalUserId` is **provably** the same value on both EVENT and LAUNCH for the same user — test
-      with one real user end to end, not just unit tests
-- [ ] You have integrated **both** channels, or you have deliberately chosen EVENT-only for
-      logging/reconciliation purposes only, understanding it produces no rewards ([README.md](./README.md))
+The go-live checklist now lives in one place: **[go-live.md](./go-live.md)**. It covers EVENT, LAUNCH, the web view,
+SETTLEMENT and closing the loop, and the incident runbook.

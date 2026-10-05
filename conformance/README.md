@@ -190,6 +190,21 @@ trên và không ảnh hưởng cổng vào cửa `integration_conformance` — 
 ⏱️ **`LAUNCH-4` chờ ~61 giây thật** (TTL của Launch Grant) — hết hạn/đã dùng/không tồn tại cố ý trả
 cùng một mã lỗi (§9, `campaign-launch.md`), nên không có cách nào giả lập nhanh hơn ở hộp đen HTTP.
 
+## 8 ca SETTLEMENT — chạy riêng, báo cáo riêng
+
+`SETTLEMENT-1..8` kiểm **bộ nhận của bạn** (kênh `PartnerSettlementSignatureV1`, `settlement.md`): bộ kiểm đóng vai
+nền tảng, ký và gọi vào `CONF_SETTLEMENT_URL`. Giống LAUNCH, trục này độc lập: không vào cổng vào cửa, không cấp hạng.
+
+```bash
+CONF_SETTLEMENT_URL=https://host-cua-ban.example/settlements CONF_SETTLEMENT_SECRET=... npx tsx run.ts
+```
+
+Không đặt `CONF_SETTLEMENT_URL` ⇒ các ca được báo là CHƯA CHẠY, không bao giờ là đạt. Có sẵn bộ nhận tham chiếu để chạy thử:
+`node ../examples/node/settlement-receiver.mjs --self-test`. Bảng ca đầy đủ: `testing.md` §1.6.
+
+Xoay khoá: đặt thêm `CONF_SETTLEMENT_PREVIOUS_SECRET` (secret cũ mà lượt xoay thay) để bộ kiểm chạy thêm ca `SETTLEMENT-9` — ký bằng
+secret cũ dưới CÙNG `X-Platform-Key-Id`, mong `2xx`. Bộ nhận tham chiếu nhận nhiều secret: `SETTLEMENT_SECRETS=<mới>,<cũ>`.
+
 ## Kết quả của bạn KHÔNG tự vào sổ của chúng tôi
 
 Bộ này **in ra**, nó không ghi. Hạng công bố chỉ đổi khi **chúng tôi** chạy lượt kiểm của mình, trỏ vào

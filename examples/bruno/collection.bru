@@ -1,0 +1,42 @@
+script:pre-request {
+  // Signs every request that needs it. Same algorithm as examples/node/ky.mjs, written with crypto-js so it also
+  // runs in Bruno's safe mode (no Node crypto needed).
+  //   channel secret = base64url( HKDF-SHA256( masterSecret, salt = empty, info = "integration:channel:<CHANNEL>:v<version>" ) )
+  //   X-Signature    = "sha256=" + hex( HMAC-SHA256( channel secret, "<X-Timestamp>.<raw body>" ) )
+  const CryptoJS = require('crypto-js');
+  const channel = bru.getRequestVar('channel'); // EVENT | LAUNCH | NONE (set on each request)
+  if (channel && channel !== 'NONE') {
+    const fromB64url = (s) => {
+      const b64 = s.replace(/-/g, '+').replace(/_/g, '/');
+      return CryptoJS.enc.Base64.parse(b64 + '='.repeat((4 - (b64.length % 4)) % 4));
+    };
+    const toB64url = (wa) => CryptoJS.enc.Base64.stringify(wa).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    const channelSecret = (master, ch, version) => {
+      const prk = CryptoJS.HmacSHA256(fromB64url(master), CryptoJS.enc.Hex.parse('00'.repeat(32))); // empty salt = 32 zero bytes
+      const info = CryptoJS.enc.Utf8.parse(`integration:channel:${ch}:v${version}`).concat(CryptoJS.enc.Hex.parse('01'));
+      return toB64url(CryptoJS.HmacSHA256(info, prk)); // 32 bytes = exactly one HKDF block
+    };
+    // Prefer a channel key you derived yourself (eventSecret / launchSecret). Only fall back to deriving it here from
+    // masterSecret, which opens EVERY channel: keep it out of shared or cloud-synced workspaces.
+    const own = bru.getEnvVar(channel === 'EVENT' ? 'eventSecret' : 'launchSecret');
+    const master = bru.getEnvVar('masterSecret');
+    if (!own && !master) throw new Error('Set the channel key (eventSecret / launchSecret) or masterSecret in the environment (secret variables), never in a request');
+    const secret = own || channelSecret(master, channel, bru.getEnvVar('channelVersion') || 1);
+
+    // Serialize the body ONCE, resolve every {{variable}} HERE, sign that exact string, and send that exact string.
+    // (Bruno substitutes {{variables}} only AFTER the pre-request script, so a template signed as-is would not match
+    // the bytes that go out.)
+    bru.setVar('stamp', String(Date.now()));
+    bru.setVar('now', new Date().toISOString());
+    const template = typeof req.getBody() === 'string' ? req.getBody() : JSON.stringify(req.getBody());
+    const raw = template.replace(/\{\{(\w+)\}\}/g, (whole, name) => {
+      const v = bru.getVar(name) ?? bru.getEnvVar(name);
+      return v === undefined || v === null ? whole : String(v);
+    });
+    req.setBody(raw);
+    const ts = String(Math.floor(Date.now() / 1000));
+    req.setHeader('X-API-Key', bru.getEnvVar('accessKey'));
+    req.setHeader('X-Timestamp', ts);
+    req.setHeader('X-Signature', 'sha256=' + CryptoJS.HmacSHA256(`${ts}.${raw}`, secret).toString(CryptoJS.enc.Hex));
+  }
+}

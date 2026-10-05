@@ -25,6 +25,92 @@ tìm ra.
 
 Không đổi.
 
+## v1.2.0-rc.1 — 2026-10-06
+
+🟢 **Mới: tự gửi thử một thông báo tất toán (chỉ ở sân sandbox).** `POST /api/v1/integrations/settlement/test`, ký như một sự
+kiện bằng khoá EVENT của bạn với thân `{}`, nhờ sân sandbox gửi **một** thông báo tất toán **mẫu** tới địa chỉ ops của chúng tôi
+đã khai cho tích hợp của bạn, và trả `{ outcome, httpStatus, code }`. Gói mẫu có mã đợt bắt đầu `SANDBOX-` và không phải dòng
+thật. Chỉ có ở sân sandbox (nơi khác `404`); tối đa 6 lượt mỗi phút. Chi tiết:
+[testing.md §1.7](./testing.md#17-tự-gửi-thử-một-thông-báo-tất-toán-chỉ-ở-sân-sandbox).
+
+🟢 **Mới: bộ nhận settlement và bộ kiểm hợp chuẩn xử lý được lượt xoay khoá.** `examples/node/settlement-receiver.mjs` nay nhận
+NHIỀU secret cho một mã khoá và thử mới trước (`SETTLEMENT_SECRETS=<mới>,<cũ>`, hoặc một danh sách cho mỗi mã khoá trong
+`SETTLEMENT_SECRETS_JSON`), vì `X-Platform-Key-Id` giữ nguyên qua các phiên bản. Bộ kiểm thêm ca thứ chín tuỳ chọn, `SETTLEMENT-9`,
+chạy khi bạn đặt `CONF_SETTLEMENT_PREVIOUS_SECRET`. Chi tiết: [testing.md §1.6](./testing.md#16-kênh-settlement--8-ca-chạy-riêng).
+
+🟡 **Đính chính: xoay khoá khi CHÚNG TÔI là bên ký (RECOVERY và SETTLEMENT).** Bản tài liệu trước viết `X-Platform-Key-Id` cho bạn biết
+secret nào trong hai cái đã ký và xoay khoá không bao giờ làm gián đoạn các lượt gọi này. Khoá dẫn xuất không chạy như vậy:
+`X-Platform-Key-Id` **giống nhau ở mọi phiên bản**, và ngay khi một lượt xoay xong chúng tôi ký bằng khoá **mới**. Hãy dẫn xuất và nạp
+phiên bản mới **trước** khi lượt xoay hoàn tất (luôn là phiên bản hiện tại cộng một), chấp nhận cả hai secret và thử mới trước; bộ nhận
+nạp trễ sẽ thấy `401` trong một lúc ngắn, và lượt gửi lặp lại được. Mã verify tham khảo ở [settlement.md](./settlement.md#3-chúng-tôi-tự-xác-thực-với-bạn--partnersettlementsignaturev1)
+và [recovery.md](./recovery.md#4-chúng-tôi-tự-xác-thực-với-bạn--partnerrecoverysignaturev1) nay nhận một danh sách secret.
+
+🔴 **PHÁ VỠ — bảng kê (`.xlsx`): có một cột được chèn vào.** Bảng kê tất toán chúng tôi giao bạn có thêm
+**`Mã người chơi (đối tác)`** (`externalUserId` của bạn cho người chơi) làm **cột 4**, ngay sau `Mã người chơi`. Mọi
+cột sau nó dịch sang phải một ô. Nếu bạn đọc file **theo vị trí**, hãy cập nhật bộ đọc; nếu bạn đọc theo tiêu đề thì
+không có gì đổi. Thứ tự trước → sau:
+
+| Trước (10 cột) | Sau (11 cột) |
+|---|---|
+| 1 Mã đợt · 2 Mã dòng · 3 Mã người chơi · 4 Mệnh giá điểm · 5 Số điểm · 6 Tỷ giá đã đóng dấu · 7 Thành tiền · 8 Đơn vị tiền · 9 Trạng thái dòng · 10 Lý do loại | 1 Mã đợt · 2 Mã dòng · 3 Mã người chơi · **4 Mã người chơi (đối tác)** · 5 Mệnh giá điểm · 6 Số điểm · 7 Tỷ giá đã đóng dấu · 8 Thành tiền · 9 Đơn vị tiền · 10 Trạng thái dòng · 11 Lý do loại |
+
+Ô để trống khi chúng tôi không đọc được chính xác mã của bạn (trạng thái dòng nói vì sao). Chi tiết: [settlement.md §6](./settlement.md#bảng-kê-xlsx).
+
+🟢 **Mới: tài liệu tất toán điểm (lần công khai đầu tiên).** [settlement.md](./settlement.md) mô tả cách chúng tôi báo địa chỉ
+của bạn khi một khoản điểm đã chốt: thân request nay mang **`externalUserId`** (mã của bạn cho người chơi; nó nằm trong thân
+được ký), các mã trả lời chúng tôi xử lý (`2xx` đã nhận · `409` / `422` từ chối · còn lại là gửi hỏng), **`409` là bắt buộc cho
+`deliveryNonce` lặp** (và cho không việc gì khác), khác biệt giữa **Gửi / Gửi lại** (nonce mới) và **Hỏi lại đối tác** (cùng nonce),
+và việc **báo lại bằng `POINT_REDEEMED` cho mọi dòng bạn đã trả**. Khoá kênh SETTLEMENT nay có trong
+[credential-derivation.md](./credential-derivation.md) kèm vector, và chữ ký có vector kiểm thử ở
+[testing.md §2.6](./testing.md#26-kênh-settlement--partnersettlementsignaturev1). Hành vi truyền dây của `EVENT` và `LAUNCH` không đổi.
+
+🟢 **Mới: `external_payment_amount_missing` trong `processing[].errorCode`.** Sự kiện `POINT_REDEEMED` thiếu `amountMinor`
+(số nguyên, VND ×1) hoặc `currency` vẫn được cửa nhận `200`, nhưng sau đó luôn thất bại. Nay bạn đọc được đúng lý do đó qua
+`POST /integrations/deliveries` thay vì `processing_error` chung: gửi đủ bốn trường rồi gửi lại với `eventId` mới.
+Chi tiết: [error-codes.md](./error-codes.md#mã-xử-lý-bất-đồng-bộ--processingerrorcode).
+
+🟡 **Đổi nghĩa: `externalUserId` khi launch không được chứa ký tự điều khiển.** Giá trị có NUL từng làm lượt launch lỗi `500`; các ký tự điều khiển khác
+(tab, xuống dòng, DEL…) từng được nhận. Nay tất cả bị từ chối ngay bằng `400 validation_error` và không tạo launch nào. Mã thường, mã có dấu và mã có dấu cách
+bên trong không bị ảnh hưởng. Chi tiết: [campaign-launch.md §4.1](./campaign-launch.md#41-request).
+
+🟢 **Mới: tự kiểm bộ nhận tất toán của bạn.** Bộ kiểm hợp chuẩn có thêm tám ca `SETTLEMENT-*` (phát lại `409`,
+"Hỏi lại" `409`, chữ ký sai, timestamp cũ, nonce mới cho cùng một dòng, thời gian trả lời, không chuyển hướng),
+và kho công khai có thêm một bộ nhận tham chiếu không phụ thuộc, `examples/node/settlement-receiver.mjs`.
+Hợp đồng tất toán không đổi. Chi tiết: [testing.md §1.6](./testing.md#16-kênh-settlement--8-ca-chạy-riêng).
+
+- 🟢 **CỘNG THÊM — Program Link 1.0:** [guide kỹ thuật](program-link.md) về tracking, guest checkout, LINK_ORDER_* FULL_STATE, SKU mapping, ký EVENT, retry/ACK và gap recovery. Làm rõ LAUNCH/externalUserId subject chỉ áp legacy Reward; buyer ID Link tuỳ chọn, không là CTV hưởng. Không hứa endpoint intake Link riêng hoặc public partner status/payout API.
+
+🟢 **Mới: đọc kết quả sau `200`.** `POST /integrations/deliveries` nay trả thêm danh sách `processing`: với `POINT_REDEEMED`, đã ghi sổ chưa, và
+**mã lỗi** khi hỏng (`settlement_item_not_found`, `settlement_batch_not_confirmed`, `settlement_item_already_confirmed`,
+`external_payment_amount_drifted`). Trước đây bạn chỉ thấy cái `200` của cửa. Chính cửa tra được ghi tài liệu lần đầu ở đây. Chi tiết:
+[event-ingestion.md §15](./event-ingestion.md#15-đọc-kết-quả-sau-200) · [error-codes.md](./error-codes.md#mã-xử-lý-bất-đồng-bộ--processingerrorcode).
+
+🟢 **Mới: đặc tả máy đọc và bộ request làm sẵn.** `openapi.yaml` (OpenAPI 3.1) và một JSON Schema cho mỗi thân yêu cầu,
+sinh ra từ chính bộ kiểm hợp lệ mà máy chủ chạy; một bộ Bruno và một bộ Postman tự ký mọi request; bảng mã lỗi nay liệt
+kê mọi mã mà các cửa có thể trả (dòng mới: `feature_disabled`, `LINK_SOURCE_UNAVAILABLE`, `LINK_CONVERSION_INVALID`,
+`batch_not_enabled`, `batch_too_large`, `payload_too_large`, `internal_error`). Hành vi trên dây không đổi. Chi tiết:
+[README.md](./README.md#đặc-tả-máy-đọc) · [error-codes.md](./error-codes.md).
+
+🟢 **Lần đầu được ghi: `displayName` khi launch, cửa tra biên nhận, web view.** Launch nhận `displayName` tuỳ chọn (chỉ là gợi ý,
+[campaign-launch.md §4.1](./campaign-launch.md#41-request)). Cửa tra biên nhận `POST /integrations/deliveries` có trong
+`openapi.yaml`. Cách nhúng web view (cookie, cầu nối native) nằm ở [webview.md](./webview.md).
+
+🟡 **Ghi lại: cửa gửi một sự kiện từ chối thân lớn hơn 100 KB** bằng `413 payload_too_large` dạng JSON, và `400 invalid_json` cho
+JSON hỏng. Cổng đã cư xử như vậy từ trước. Chi tiết: [event-ingestion.md §10b](./event-ingestion.md#10b-trần-kích-thước-thân-request).
+
+🟡 **Đổi câu chữ: `actionKey` là định danh chuẩn do nền tảng định nghĩa.** Bảng ví dụ cũ đã bỏ; đọc giá trị hiện hành của
+chiến dịch bạn trên console hoặc hỏi đầu mối. Chi tiết: [event-ingestion.md §5](./event-ingestion.md#5-schema-request).
+
+🟢 **Checklist lên thật đã chuyển chỗ.** Checklist trước khi lên thật từng nằm ở `testing.md` mục 4 nay là [go-live.md](./go-live.md),
+kèm các mục tất toán, web view và một sổ tay xử lý sự cố. `testing.md` giữ một dòng trỏ sang đó.
+
+🟢 **Mới: gửi theo lô, `POST /integrations/events/batch`.** Gửi N sự kiện trong một lượt gọi và nhận câu trả lời theo
+từng sự kiện. Mặc định TẮT theo từng tích hợp — hãy nhờ chúng tôi bật cho khoá của bạn. Không gì về từng sự kiện thay đổi.
+Lần đầu nói rõ: ba định danh ở ba cấp (`eventId` · `deliveryId` · `batchId`), `accepted` không có nghĩa là đã cấp quyền
+lợi, và thứ tự mảng không phải thứ tự thời gian. *Delivery* nay được định nghĩa là biên nhận của chúng tôi cho một sự kiện, không còn là một lượt gọi HTTP. Chi tiết:
+[event-ingestion.md §6](./event-ingestion.md#6-eventid-deliveryid-batchid--ba-định-danh-ba-cấp) ·
+[§14](./event-ingestion.md#14-gửi-theo-lô).
+
 ## v1.1.0 — 2026-09-14
 
 🟡 **Endpoint recovery nay bắt buộc là HTTPS công khai.** Địa chỉ `http://`, hoặc máy trong mạng riêng/

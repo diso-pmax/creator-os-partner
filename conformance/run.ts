@@ -1,5 +1,5 @@
 import { hkdfSync } from 'node:crypto';
-import { CA_BAT_BUOC, CA_LAUNCH, SO_CA_LAUNCH, SO_CA_RA, SO_CA_VAO } from './cases';
+import { CA_BAT_BUOC, CA_LAUNCH, CA_SETTLEMENT, CA_SETTLEMENT_ROTATION, SO_CA_LAUNCH, SO_CA_RA, SO_CA_SETTLEMENT, SO_CA_VAO } from './cases';
 import { ketQuaVaoCua, nangLucDaChungMinh, type CauHinh, type GoiHttp, type KetQuaCa } from './contract';
 
 /**
@@ -25,7 +25,11 @@ import { ketQuaVaoCua, nangLucDaChungMinh, type CauHinh, type GoiHttp, type KetQ
 export const goiThat: GoiHttp = async (duong, tuyChon) => {
   // `redirect` mặc định 'follow' — giữ hành vi cũ cho VAO/RA (không bao giờ nhận 3xx). LAUNCH-2/3/6/7
   // (§ `cases.ts`) truyền `'manual'` để đọc được status/Location/Set-Cookie của chính lượt redirect.
-  const r = await fetch(duong, { ...tuyChon, redirect: tuyChon.redirect ?? 'follow' });
+  const r = await fetch(duong, {
+    ...tuyChon,
+    redirect: tuyChon.redirect ?? 'follow',
+    ...(tuyChon.timeoutMs ? { signal: AbortSignal.timeout(tuyChon.timeoutMs) } : {}),
+  });
   const text = await r.text();
   let body: unknown = null;
   try {
@@ -97,6 +101,43 @@ export async function chayLaunch(cf: CauHinh, goi: GoiHttp = goiThat): Promise<K
   return kq;
 }
 
+/**
+ * Runs the 8 SETTLEMENT cases against `cf.settlementUrl`. Kept apart from `chayHopChuan()` like LAUNCH:
+ * it is its own axis and never feeds the entry gate or the recovery rank.
+ *
+ * No `settlementUrl` ⇒ every case is reported as NOT RUN (`dat: false`, "SKIPPED"), never as passed.
+ */
+export async function chaySettlement(cf: CauHinh, goi: GoiHttp = goiThat): Promise<KetQuaCa[]> {
+  const kq: KetQuaCa[] = [];
+  // The rotation case needs the OLD secret, so it runs only when the integrator supplies it; the eight base cases always run.
+  const cases = cf.settlementPreviousSecret ? [...CA_SETTLEMENT, CA_SETTLEMENT_ROTATION] : CA_SETTLEMENT;
+  for (const ca of cases) {
+    if (!cf.settlementUrl) {
+      kq.push({ ...ca, dat: false, vi: 'SKIPPED — CONF_SETTLEMENT_URL is not set' });
+      continue;
+    }
+    try {
+      const r = await ca.chay(cf, goi);
+      kq.push({ ma: ca.ma, chieu: ca.chieu, ten: ca.ten, capNangLuc: ca.capNangLuc, ...r });
+    } catch (e) {
+      kq.push({ ma: ca.ma, chieu: ca.chieu, ten: ca.ten, capNangLuc: ca.capNangLuc, dat: false, vi: `threw: ${String((e as Error)?.message ?? e)}` });
+    }
+  }
+  return kq;
+}
+
+export function inBaoCaoSettlement(kq: readonly KetQuaCa[]): string {
+  const dong = (c: KetQuaCa) => `  ${c.dat ? '✅' : '❌'} [${c.ma}] ${c.ten}${c.dat ? '' : ` — ${c.vi}`}`;
+  const settlement = kq.filter((c) => c.chieu === 'SETTLEMENT');
+  return [
+    // 8 base cases, or 9 when the rotation case ran (it needs CONF_SETTLEMENT_PREVIOUS_SECRET).
+    `SETTLEMENT CHANNEL — ${settlement.filter((c) => c.dat).length}/${Math.max(SO_CA_SETTLEMENT, settlement.length)}`,
+    ...settlement.map(dong),
+    '',
+    'Reported like LAUNCH: an independent axis, not part of the entry gate.',
+  ].join('\n');
+}
+
 export function inBaoCaoLaunch(kq: readonly KetQuaCa[]): string {
   const dong = (c: KetQuaCa) => `  ${c.dat ? '✅' : '❌'} [${c.ma}] ${c.ten}${c.dat ? '' : ` — ${c.vi}`}`;
   const launch = kq.filter((c) => c.chieu === 'LAUNCH');
@@ -133,7 +174,7 @@ export function inBaoCao(kq: readonly KetQuaCa[]): string {
   ].join('\n');
 }
 
-type Kenh = 'AUTH' | 'EVENT' | 'RECOVERY' | 'LAUNCH';
+type Kenh = 'AUTH' | 'EVENT' | 'RECOVERY' | 'LAUNCH' | 'SETTLEMENT';
 
 /**
  * `IntegrationCredentialDerivationV1` — HKDF-SHA256 · salt RỖNG · 32 byte · base64url không padding.
@@ -206,6 +247,12 @@ function tuMoiTruong(): CauHinh {
     // nhánh "để trống thì bỏ qua" như RECOVERY.
     launchSecret: khoaKenh('LAUNCH', 'CONF_LAUNCH_SECRET', 'CONF_LAUNCH_VERSION', true)!,
     launchCampaignId: can('CONF_LAUNCH_CAMPAIGN_ID'),
+    // Optional axis: set CONF_SETTLEMENT_URL to run the 8 SETTLEMENT cases against your receiver.
+    settlementUrl: process.env.CONF_SETTLEMENT_URL || undefined,
+    settlementSecret: process.env.CONF_SETTLEMENT_URL ? khoaKenh('SETTLEMENT', 'CONF_SETTLEMENT_SECRET', 'CONF_SETTLEMENT_VERSION', true) : undefined,
+    settlementKeyId: process.env.CONF_SETTLEMENT_KEY_ID || undefined,
+    // Optional: the secret a rotation replaces. Set it to add the rotation case (SETTLEMENT-9).
+    settlementPreviousSecret: process.env.CONF_SETTLEMENT_URL ? process.env.CONF_SETTLEMENT_PREVIOUS_SECRET || undefined : undefined,
   };
 
   // Nguồn khoá phải NHÌN THẤY ĐƯỢC: cùng một `401` có thể do sai secret, sai version, hoặc dẫn xuất
@@ -223,13 +270,15 @@ function tuMoiTruong(): CauHinh {
 // Chạy trực tiếp thì thi hành; `import` thì không. Giữ file vừa là thư viện vừa là lệnh.
 if (process.argv[1] && process.argv[1].endsWith('run.ts')) {
   const cf = tuMoiTruong();
-  Promise.all([chayHopChuan(cf), chayLaunch(cf)])
-    .then(([kq, kqLaunch]) => {
+  Promise.all([chayHopChuan(cf), chayLaunch(cf), cf.settlementUrl ? chaySettlement(cf) : Promise.resolve([] as KetQuaCa[])])
+    .then(([kq, kqLaunch, kqSettlement]) => {
       console.log(inBaoCao(kq));
       console.log('');
       console.log(inBaoCaoLaunch(kqLaunch));
+      console.log('');
+      console.log(cf.settlementUrl ? inBaoCaoSettlement(kqSettlement) : 'SETTLEMENT CHANNEL — not run (set CONF_SETTLEMENT_URL to test your settlement receiver)');
       // 🔴 Mã thoát KHÁC 0 khi có ca trượt Ở BẤT KỲ bộ nào — "không có ô gần đạt" áp cho CẢ HAI.
-      const tatCa = [...kq, ...kqLaunch];
+      const tatCa = [...kq, ...kqLaunch, ...kqSettlement];
       process.exit(tatCa.every((c) => c.dat) ? 0 : 1);
     })
     .catch((e) => {

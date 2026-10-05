@@ -20,7 +20,7 @@ Creator-OS công bố:
 | Info | UTF-8 `integration:channel:<CHANNEL>:v<VERSION>` |
 | Đầu ra | 32 byte, mã hoá base64url không padding |
 
-`CHANNEL` viết hoa: `EVENT`, `LAUNCH`, `RECOVERY` (và `AUTH` với tích hợp cũ). Version là số nguyên
+`CHANNEL` viết hoa: `EVENT`, `LAUNCH`, `RECOVERY`, `SETTLEMENT` (và `AUTH` với tích hợp cũ). `RECOVERY` và `SETTLEMENT` chỉ cần khi bạn dựng hai cửa tuỳ chọn đó. Version là số nguyên
 dương Creator-OS trả về; tuyệt đối không tự đoán.
 
 ```js
@@ -80,6 +80,7 @@ derive() {   # derive <CHANNEL> <VERSION>
 EVENT_KEY=$(derive EVENT 1)      # ký sự kiện   → event-ingestion.md
 LAUNCH_KEY=$(derive LAUNCH 1)    # ký launch    → campaign-launch.md
 RECOVERY_KEY=$(derive RECOVERY 1)  # KIỂM chữ ký chúng tôi gửi sang → recovery.md
+SETTLEMENT_KEY=$(derive SETTLEMENT 1)  # KIỂM chữ ký thông báo điểm chúng tôi gửi sang → settlement.md
 ```
 
 ## Bốn chỗ tích hợp hay sai — đọc trước khi debug `401`

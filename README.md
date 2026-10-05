@@ -23,6 +23,9 @@ Hợp đồng tích hợp là **ĐẶC TẢ, không phải đề xuất**: nền
 | bắt đầu | [`contract/vi/README.md`](contract/vi/README.md) · English: [`contract/en/README.md`](contract/en/README.md) |
 | **tự kiểm trước khi kết nối** | [`conformance/`](conformance/) — bộ ca bạn tự chạy |
 | ví dụ mã ký, chạy được ngay | [`examples/`](examples/) |
+| nhúng web view vào app (cookie, cầu nối native) | [`contract/vi/webview.md`](contract/vi/webview.md) |
+| checklist lên thật và xử lý sự cố | [`contract/vi/go-live.md`](contract/vi/go-live.md) |
+| đặc tả máy đọc và request làm sẵn (Bruno, Postman) | [`contract/openapi.yaml`](contract/openapi.yaml) · [`examples/bruno/`](examples/bruno/) · [`examples/postman/`](examples/postman/) |
 
 ### Chạy thử trong 1 phút
 
@@ -34,11 +37,13 @@ bash examples/shell/ky.sh --tu-kiem
 
 Ra `sha256=ae00dc85…` là hàm ký của bạn đúng. Chi tiết ở hợp đồng.
 
+Nhận điểm tất toán từ chúng tôi? `node examples/node/settlement-receiver.mjs --self-test` kiểm bộ nhận tham chiếu; chạy nó thật bằng `SETTLEMENT_SECRET=... node examples/node/settlement-receiver.mjs --port 8080`, rồi trỏ `CONF_SETTLEMENT_URL` của bộ kiểm hợp chuẩn vào đó (xem `contract/vi/testing.md` §1.6).
+
 ### Bộ kiểm hợp chuẩn
 
 ```bash
 cd conformance
-CONF_API=https://<cửa của chúng tôi>/api/v1 \
+CONF_API=https://<host của môi trường thử chúng tôi đã cấp>/api/v1 \
 CONF_ACCESS_KEY=<mã nhận dạng của bạn> \
 CONF_EVENT_SECRET=<bí mật kênh sự kiện> \
 CONF_EVENT_TYPE=ORDER_COMPLETED \

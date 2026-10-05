@@ -1,0 +1,34 @@
+meta {
+  name: Create a launch URL
+  type: http
+  seq: 5
+}
+
+post {
+  url: {{baseUrl}}/campaigns/{{campaignId}}/launch
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+vars:pre-request {
+  channel: LAUNCH
+}
+
+body:json {
+  {
+    "externalUserId": "{{externalUserId}}",
+    "displayName": "Sample Player"
+  }
+}
+
+vars:post-response {
+  launchUrl: res.body.launchUrl
+}
+
+docs {
+  LAUNCH channel: a different secret from EVENT. displayName is only a suggestion and is optional.
+}

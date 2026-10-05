@@ -16,18 +16,25 @@ Trang này là **điểm vào chung** — đọc trước khi mở một trong h
 
 ---
 
+## Chọn event profile
+
+Đơn shop không cần buyer đăng nhập, quy công CTV bằng Program Link: đọc [program-link.md](program-link.md). Link dùng EVENT ký trên server, **không** cần Campaign LAUNCH, chỉ cho phép thiếu externalUserId với envelope LINK_ORDER_* / PROGRAM_LINK hợp lệ. Buyer không là CTV hưởng. Quy tắc Reward/session bên dưới áp dụng legacy Reward, không áp profile Link này.
+
 ## Tích hợp này làm gì
 
 Creator-OS biến hoạt động thật trong hệ thống của bạn — đơn hàng hoàn tất, đơn bị huỷ, hành vi trong
 ứng dụng — thành quyền lợi cho người dùng: điểm, entitlement, nội dung mở khoá. Để làm được việc đó, hai
-kênh độc lập nối hệ thống của bạn với chúng tôi:
+kênh độc lập nối hệ thống của bạn với chúng tôi, và hai kênh nữa là tuỳ chọn:
 
 | Kênh | Trả lời câu hỏi | Tài liệu |
 |---|---|---|
-| **EVENT** | "người dùng vừa **làm gì**?" | [event-ingestion.md](./event-ingestion.md) |
+| **EVENT** | "người dùng vừa **làm gì**?" | [program-link.md](./program-link.md) | Link anonymous: tracking, vòng đời đơn, SKU mapping, ký, ACK và recovery |
+| [event-ingestion.md](./event-ingestion.md) |
 | **LAUNCH** *(Campaign Launch)* | "người vừa mở ứng dụng **là ai**, cho campaign nào?" | [campaign-launch.md](./campaign-launch.md) |
+| **RECOVERY** *(tuỳ chọn)* | "bạn đã gửi gì cho chúng tôi trong khoảng này?" — **chúng tôi** gọi **bạn** | [recovery.md](./recovery.md) |
+| **SETTLEMENT** *(tuỳ chọn)* | "khoản điểm này đã chốt — xin xử lý" — **chúng tôi** gọi **bạn**, và bạn báo lại bằng `POINT_REDEEMED` | [settlement.md](./settlement.md) |
 
-Cả hai kênh dùng chung một `accessKey`. Bạn giữ một `masterSecret` và dẫn xuất khoá riêng cho từng
+Mọi kênh dùng chung một `accessKey`. Bạn giữ một `masterSecret` và dẫn xuất khoá riêng cho từng
 kênh theo [`IntegrationCredentialDerivationV1`](./credential-derivation.md).
 
 ---
@@ -39,13 +46,15 @@ kênh theo [`IntegrationCredentialDerivationV1`](./credential-derivation.md).
   1. Khoá kênh **EVENT** — chúng tôi dùng để verify chữ ký sự kiện bạn gửi.
   2. Khoá kênh **LAUNCH** — chúng tôi dùng để verify chữ ký request Campaign Launch bạn gửi (xem [campaign-launch.md](./campaign-launch.md)).
   3. Khoá kênh **RECOVERY** *(chỉ dùng nếu bạn dựng đường phục hồi)* — để **chúng tôi** ký khi gọi sang bạn.
+  4. Khoá kênh **SETTLEMENT** *(chỉ dùng nếu bạn khai `settlement_endpoint`)* — để **chúng tôi** ký khi báo tất toán điểm, xem [settlement.md](./settlement.md).
 
-  🔴 **Ba khoá trên chúng tôi KHÔNG gửi cho bạn** — bạn tự dẫn xuất từ `masterSecret`. Chúng tôi chỉ
+  🔴 **Bốn khoá trên chúng tôi KHÔNG gửi cho bạn** — bạn tự dẫn xuất từ `masterSecret`. Chúng tôi chỉ
   báo kèm **số version của từng kênh** *(thường bắt đầu từ `1`)*, vì version nằm trong chuỗi `info`.
 - Môi trường thử nghiệm + bộ kiểm hợp chuẩn tự chạy (conformance test suite).
-- **Host của môi trường bạn dùng** — chúng tôi báo khi bàn giao. Mọi ví dụ trong bộ tài liệu này
-  viết `https://<host của môi trường bạn dùng>/api/v1`; thay bằng giá trị chúng tôi gửi, KHÔNG
+- **Host của môi trường bạn đang dùng** — chúng tôi báo khi bàn giao. Mọi ví dụ trong bộ tài liệu này
+  viết `https://<host của môi trường bạn đang dùng>/api/v1`; thay bằng giá trị chúng tôi gửi, KHÔNG
   đoán từ tên miền của cổng quản trị.
+- **Host của môi trường thử chúng tôi đã cấp** — CHỈ dùng ở chỗ ví dụ không được chạm tới production: bộ kiểm hợp chuẩn (mỗi lượt chạy bắn 8–10 sự kiện thật tiền tố `conf-`) và lượt gửi thử thông báo tất toán ở [testing.md §1.7](./testing.md#17-tự-gửi-thử-một-thông-báo-tất-toán-chỉ-ở-sân-sandbox), chỉ có ở môi trường thử, nơi khác trả `404`. Ví dụ viết `https://<host của môi trường thử chúng tôi đã cấp>/api/v1`.
 - Mã nguồn sự kiện — ánh xạ `type` bạn gửi sang hệ thống nội bộ của chúng tôi.
 
 ## Bạn cung cấp cho Creator-OS
@@ -59,10 +68,11 @@ kênh theo [`IntegrationCredentialDerivationV1`](./credential-derivation.md).
 
 ---
 
-## ⭐ Thứ tự bắt buộc: LAUNCH trước, EVENT mới có ý nghĩa
+## ⭐ Thứ tự bắt buộc cho legacy Reward: LAUNCH trước EVENT
 
-**Hai kênh hiện hành KHÔNG phải hai lựa chọn ngang hàng, tự do dùng cái nào cũng được.** Đọc kỹ mục này
-trước khi quyết định chỉ tích hợp một kênh.
+**Mục này chỉ áp dụng legacy Reward. Không áp PROGRAM_LINK; đọc [guide Link](program-link.md) về tracking/capture prerequisites.**
+
+Hai kênh Reward không là hai lựa chọn ngang hàng.
 
 🔴 **LAUNCH thiết lập Creator-OS session của người dùng. EVENT báo cáo hoạt động của người dùng. Cả hai
 đều BẮT BUỘC để hoạt động do đối tác báo cáo sinh ra quyền lợi** — LAUNCH là điều kiện tiên quyết, không
@@ -98,7 +108,7 @@ Mỗi dòng chỉ định nghĩa MỘT LẦN ở đây; các tài liệu kênh k
 |---|---|---|---|---|
 | `eventId` | EVENT | **bạn** | một sự việc kinh doanh | gửi lại PHẢI dùng lại **cùng** id |
 | `deliveryId` | EVENT | **chúng tôi** | một lượt giao | mỗi lượt **có thể** cấp id mới |
-| `externalUserId` | EVENT + LAUNCH | **bạn** | một người dùng, dùng chung cả hai kênh | PHẢI là cùng một giá trị ở cả hai kênh cho cùng người dùng (mục trên) |
+| `externalUserId` (legacy Reward) | EVENT + LAUNCH | **bạn** | một người dùng, dùng chung cả hai kênh | PHẢI là cùng một giá trị ở cả hai kênh cho cùng người dùng (mục trên) |
 | `launchCode` | LAUNCH | **chúng tôi** | một lượt launch | dùng một lần, cấp ở bước 1, sống 60 giây — xem [campaign-launch.md](./campaign-launch.md#6-launch-grant--bất-biến-bảo-mật-đã-đóng-băng-đừng-tìm-cách-lách) |
 
 ⚠️ **`eventId` và `launchCode` có quy tắc gửi lại NGƯỢC nhau.** `eventId` định danh một sự việc kinh
@@ -108,13 +118,16 @@ gửi lại của kênh này cho kênh kia.
 
 ---
 
-## Checklist tích hợp
+## Checklist tích hợp legacy Reward
+
+Đối với Link, dùng [checklist Link riêng](program-link.md#9-checklist-tích-hợp).
 
 ```text
 [ ] Dựng bộ gửi EVENT (ký HMAC-SHA256, POST /api/v1/integrations/events)
 [ ] Dựng luồng LAUNCH (2 bước, POST /api/v1/campaigns/:campaignId/launch + GET /api/v1/launch)
 [ ] Dùng CÙNG giá trị externalUserId cho cùng một người dùng ở cả hai kênh
 [ ] Dựng endpoint RECOVERY (TUỲ CHỌN — xem recovery.md)
+[ ] Nhận gói tất toán điểm (TUỲ CHỌN — xem settlement.md): đưa ops một địa chỉ https:// · dẫn xuất khoá SETTLEMENT · kiểm chữ ký trên thân THÔ · lưu sổ deliveryNonce đã thấy và trả 409 khi trùng (và không cho việc gì khác) · gửi POINT_REDEEMED cho mọi dòng đã trả
 [ ] Xử lý 2xx (200 = đã nhận, kể cả bản trùng)
 [ ] Xử lý 4xx (400/401/403/404/409/422 — xem error-codes.md)
 [ ] Xử lý 429 (đọc Retry-After, chờ rồi thử lại)
@@ -128,15 +141,58 @@ gửi lại của kênh này cho kênh kia.
 
 ---
 
+## Cả vòng đi trọn vẹn
+
+```mermaid
+flowchart LR
+  A[Máy chủ của bạn tạo launchUrl] --> B[App của bạn mở nó trong web view]
+  B --> C[Người chơi thao tác trong web view]
+  C --> D[Máy chủ của bạn gửi sự kiện]
+  D --> E[Chúng tôi đổi sự kiện thành điểm và chốt kỳ]
+  E --> F[Ops của chúng tôi gửi số đã tất toán tới điểm cuối của bạn]
+  F --> G[Bạn trả cho người chơi và trả lời 2xx]
+  G --> H[Bạn gửi POINT_REDEEMED cho mỗi dòng đã trả]
+  H --> I[Dòng được đóng]
+```
+
+| Bước | Điều xảy ra | Đọc |
+|---|---|---|
+| 1 | máy chủ của bạn xin một `launchUrl` cho một người chơi | [campaign-launch.md §4](./campaign-launch.md#4-bước-1--tạo-launch-grant) |
+| 2 | app của bạn mở đúng nguyên URL đó trong web view có giữ cookie | [webview.md](./webview.md) |
+| 3 | người chơi thao tác; máy chủ của bạn báo từng sự việc kinh doanh | [event-ingestion.md](./event-ingestion.md) |
+| 4 | chúng tôi đổi sự kiện đủ điều kiện thành điểm và, cuối kỳ, chốt kỳ | *(phía chúng tôi)* |
+| 5 | ops của chúng tôi gửi từng khoản đã tất toán tới `settlement_endpoint` của bạn | xem tài liệu tất toán, mục 2 |
+| 6 | bạn trả cho người chơi, trả lời `2xx` (hoặc `409` cho lượt lặp) | xem tài liệu tất toán, mục 2.2 và 4 |
+| 7 | bạn báo mỗi khoản đã trả bằng một sự kiện `POINT_REDEEMED` để dòng đóng lại | [event-ingestion.md](./event-ingestion.md) |
+
+Bước 5 đến 7 chỉ áp dụng nếu bạn nhận tất toán điểm ([settlement.md](./settlement.md)). Trước khi có người
+dùng thật: [go-live.md](./go-live.md).
+
+## Đặc tả máy đọc
+
+[`openapi.yaml`](../openapi.yaml) (OpenAPI 3.1) mô tả mọi cửa đối tác, tiêu đề HMAC của từng kênh, và gói
+tất toán chúng tôi gửi bạn (ở mục `webhooks`). Mỗi thân yêu cầu có một JSON Schema trong
+[`schemas/`](../schemas/). Chúng được sinh ra từ chính bộ kiểm hợp lệ mà máy chủ chạy nên không trôi. JSON
+Schema không diễn tả hết mọi phép kiểm; các phép kiểm thêm được liệt kê ở `x-serverSideChecks` trong từng
+schema. Request làm sẵn, tự ký, nằm ở `examples/bruno/` và `examples/postman/` của kho này (một bộ Bruno và
+một bộ Postman: đặt `baseUrl`, `accessKey`, `masterSecret` rồi gửi).
+
+---
+
 ## Bản đồ tài liệu
 
 | Tài liệu | Nội dung |
 |---|---|
+| [program-link.md](./program-link.md) | Link anonymous: tracking, vòng đời đơn, SKU mapping, ký, ACK và recovery |
 | [event-ingestion.md](./event-ingestion.md) | Kênh EVENT: xác thực, schema request, response, gửi lại, giới hạn tần suất |
 | [campaign-launch.md](./campaign-launch.md) | Kênh LAUNCH: luồng 2 bước, bất biến Launch Grant, phiên |
 | [recovery.md](./recovery.md) | Năng lực đối soát và lấp lại (tuỳ chọn) |
+| [settlement.md](./settlement.md) | Chúng tôi báo bạn khi có khoản tất toán ĐIỂM (tuỳ chọn) |
 | [error-codes.md](./error-codes.md) | Tra cứu mã lỗi hợp nhất cho mọi kênh |
-| [testing.md](./testing.md) | Bộ kiểm hợp chuẩn + checklist trước khi lên thật |
+| [testing.md](./testing.md) | Bộ kiểm hợp chuẩn |
+| [webview.md](./webview.md) | Nhúng web view: cookie, cầu nối native, phiên |
+| [go-live.md](./go-live.md) | Checklist lên thật và sổ tay xử lý sự cố |
+| [openapi.yaml](../openapi.yaml) | Đặc tả máy đọc (OpenAPI 3.1) và [JSON Schema](../schemas/) |
 | [credential-derivation.md](./credential-derivation.md) | Hợp đồng HKDF, version, vector kiểm thử và xoay khoá |
 | [changelog.md](./changelog.md) | Lịch sử phiên bản |
 

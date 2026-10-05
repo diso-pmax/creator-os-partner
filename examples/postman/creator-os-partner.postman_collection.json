@@ -1,0 +1,300 @@
+{
+  "info": {
+    "name": "Creator OS partner API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Requests for every partner door, signed automatically. USE A PERSONAL, LOCAL WORKSPACE: do not sync this collection to a cloud or shared workspace. Safest: derive the channel keys yourself and set only eventSecret and launchSecret (type secret). Convenience: set masterSecret, which opens EVERY channel including SETTLEMENT; use it with a sandbox credential set only. See contract/en/testing.md."
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Signs every request that needs it. Same algorithm as examples/node/ky.mjs, written with CryptoJS (built into Postman).",
+          "//   channel secret = base64url( HKDF-SHA256( masterSecret, salt = empty, info = \"integration:channel:<CHANNEL>:v<version>\" ) )",
+          "//   X-Signature    = \"sha256=\" + hex( HMAC-SHA256( channel secret, \"<X-Timestamp>.<raw body>\" ) )",
+          "const cjs = require('crypto-js'); // an alias: Postman already declares a global named CryptoJS",
+          "// Dynamic values are fixed ONCE here: a {{stamp}} resolved twice (to sign, then to send) would differ.",
+          "pm.variables.set('stamp', String(Date.now()));",
+          "pm.variables.set('now', new Date().toISOString());",
+          "const channel = pm.request.headers.get('X-Channel');",
+          "if (channel && channel !== 'NONE') {",
+          "  pm.request.headers.remove('X-Channel');",
+          "  const fromB64url = (s) => {",
+          "    const b64 = s.replace(/-/g, '+').replace(/_/g, '/');",
+          "    return cjs.enc.Base64.parse(b64 + '='.repeat((4 - (b64.length % 4)) % 4));",
+          "  };",
+          "  const toB64url = (wa) => cjs.enc.Base64.stringify(wa).replace(/\\+/g, '-').replace(/\\//g, '_').replace(/=+$/, '');",
+          "  const channelSecret = (master, ch, version) => {",
+          "    const prk = cjs.HmacSHA256(fromB64url(master), cjs.enc.Hex.parse('00'.repeat(32))); // empty salt = 32 zero bytes",
+          "    const info = cjs.enc.Utf8.parse(`integration:channel:${ch}:v${version}`).concat(cjs.enc.Hex.parse('01'));",
+          "    return toB64url(cjs.HmacSHA256(info, prk)); // 32 bytes = exactly one HKDF block",
+          "  };",
+          "  // Prefer a channel key you derived yourself (eventSecret / launchSecret). Only fall back to deriving it here from",
+          "  // masterSecret, which opens EVERY channel: keep it out of shared or cloud-synced workspaces.",
+          "  const own = pm.variables.get(channel === 'EVENT' ? 'eventSecret' : 'launchSecret');",
+          "  const master = pm.variables.get('masterSecret');",
+          "  if (!own && !master) throw new Error('Set the channel key (eventSecret / launchSecret) or masterSecret in the collection variables (type secret), never in a request');",
+          "  const secret = own || channelSecret(master, channel, pm.variables.get('channelVersion') || 1);",
+          "",
+          "  // Sign the body exactly as Postman will send it (variables already resolved).",
+          "  const raw = pm.variables.replaceIn(pm.request.body.raw);",
+          "  const ts = String(Math.floor(Date.now() / 1000));",
+          "  pm.request.headers.upsert({ key: 'X-API-Key', value: pm.variables.get('accessKey') });",
+          "  pm.request.headers.upsert({ key: 'X-Timestamp', value: ts });",
+          "  pm.request.headers.upsert({ key: 'X-Signature', value: 'sha256=' + cjs.HmacSHA256(`${ts}.${raw}`, secret).toString(cjs.enc.Hex) });",
+          "}"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "https://api.example.com/api/v1"
+    },
+    {
+      "key": "accessKey",
+      "value": "AK-REPLACE-ME"
+    },
+    {
+      "key": "eventSecret",
+      "value": "",
+      "type": "secret"
+    },
+    {
+      "key": "launchSecret",
+      "value": "",
+      "type": "secret"
+    },
+    {
+      "key": "masterSecret",
+      "value": "",
+      "type": "secret"
+    },
+    {
+      "key": "channelVersion",
+      "value": "1"
+    },
+    {
+      "key": "eventType",
+      "value": "ORDER_COMPLETED"
+    },
+    {
+      "key": "externalUserId",
+      "value": "partner-user-0001"
+    },
+    {
+      "key": "campaignId",
+      "value": "REPLACE-WITH-A-REAL-ACTIVE-CAMPAIGN-ID"
+    },
+    {
+      "key": "eventSource",
+      "value": "REPLACE-WITH-YOUR-EVENT-SOURCE"
+    },
+    {
+      "key": "launchUrl",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "Send one event",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "X-Channel",
+            "value": "EVENT",
+            "description": "Removed by the collection script before sending; it only tells the script which secret to derive."
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/integrations/events",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "integrations",
+            "events"
+          ]
+        },
+        "description": "",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"eventId\": \"evt-{{stamp}}\",\n  \"externalUserId\": \"{{externalUserId}}\",\n  \"type\": \"{{eventType}}\",\n  \"occurredAt\": \"{{now}}\",\n  \"payload\": {\n    \"orderId\": \"SO-{{stamp}}\",\n    \"amountMinor\": 100000,\n    \"currency\": \"VND\"\n  }\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "Send events in one batch",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "X-Channel",
+            "value": "EVENT",
+            "description": "Removed by the collection script before sending; it only tells the script which secret to derive."
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/integrations/events/batch",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "integrations",
+            "events",
+            "batch"
+          ]
+        },
+        "description": "Needs batch delivery enabled for your key.",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"events\": [\n    {\n      \"eventId\": \"evt-batch-{{stamp}}-1\",\n      \"externalUserId\": \"{{externalUserId}}\",\n      \"type\": \"{{eventType}}\",\n      \"occurredAt\": \"{{now}}\",\n      \"payload\": {\n        \"orderId\": \"SO-{{stamp}}\",\n        \"amountMinor\": 100000,\n        \"currency\": \"VND\"\n      }\n    }\n  ]\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "Look up the receipt of an event",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "X-Channel",
+            "value": "EVENT",
+            "description": "Removed by the collection script before sending; it only tells the script which secret to derive."
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/integrations/deliveries",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "integrations",
+            "deliveries"
+          ]
+        },
+        "description": "Send EXACTLY ONE of deliveryId or externalId.",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"externalId\": \"evt-REPLACE-WITH-AN-EVENT-ID-YOU-SENT\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "Reconcile a time range",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "X-Channel",
+            "value": "EVENT",
+            "description": "Removed by the collection script before sending; it only tells the script which secret to derive."
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/integrations/reconciliation",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "integrations",
+            "reconciliation"
+          ]
+        },
+        "description": "At most 30 days per call.",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"eventSource\": \"{{eventSource}}\",\n  \"from\": \"2026-01-01T00:00:00Z\",\n  \"to\": \"2026-01-02T00:00:00Z\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "Create a launch URL",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          },
+          {
+            "key": "X-Channel",
+            "value": "LAUNCH",
+            "description": "Removed by the collection script before sending; it only tells the script which secret to derive."
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/campaigns/{{campaignId}}/launch",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "campaigns",
+            "{{campaignId}}",
+            "launch"
+          ]
+        },
+        "description": "LAUNCH channel: a different secret from EVENT.",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"externalUserId\": \"{{externalUserId}}\",\n  \"displayName\": \"Sample Player\"\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "if (pm.response.code === 200) pm.collectionVariables.set('launchUrl', pm.response.json().launchUrl);"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

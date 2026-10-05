@@ -1,0 +1,71 @@
+{
+  "type": "object",
+  "properties": {
+    "specversion": {
+      "anyOf": [
+        {
+          "type": "string",
+          "enum": [
+            "1.0"
+          ]
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "eventId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "externalUserId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "type": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "occurredAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "seq": {
+      "anyOf": [
+        {
+          "type": "integer",
+          "minimum": 0
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "confidence": {
+      "type": "string",
+      "enum": [
+        "CLIENT_ASSERTED",
+        "SERVER_OBSERVED",
+        "SETTLED"
+      ]
+    },
+    "payload": {}
+  },
+  "required": [
+    "eventId",
+    "type",
+    "occurredAt"
+  ],
+  "additionalProperties": true,
+  "title": "PartnerEvent",
+  "description": "Body of POST /integrations/events (and each element of a batch).",
+  "x-serverSideChecks": [
+    "type must be one of the event types declared for your key; otherwise 422 event_type_not_registered",
+    "occurredAt freshness window (422 event_too_late / event_from_future)",
+    "externalUserId is required for the regular event types; LINK_* events instead require the PROGRAM_LINK 1.0 conversion profile in payload, with eventId, type and occurredAt matching the conversion",
+    "unknown top-level fields are ignored, not rejected (additionalProperties is true on purpose)"
+  ]
+}

@@ -1,0 +1,31 @@
+meta {
+  name: Reconcile a time range
+  type: http
+  seq: 4
+}
+
+post {
+  url: {{baseUrl}}/integrations/reconciliation
+  body: json
+  auth: none
+}
+
+headers {
+  Content-Type: application/json
+}
+
+vars:pre-request {
+  channel: EVENT
+}
+
+body:json {
+  {
+    "eventSource": "{{eventSource}}",
+    "from": "2026-01-01T00:00:00Z",
+    "to": "2026-01-02T00:00:00Z"
+  }
+}
+
+docs {
+  At most 30 days per call.
+}

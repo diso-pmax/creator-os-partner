@@ -54,6 +54,95 @@ trỏ cùng một image.
 
 ---
 
+## 4a. Kiểm cấu hình bằng image mới — TRƯỚC khi chạy migration và đổi container
+
+Container mới từ chối khởi động nếu thiếu biến bắt buộc hoặc còn biến bị cấm — và nó chỉ báo SAU khi container cũ đã bị thay. Chạy lệnh kiểm dưới đây từ chính image mới, với đúng file `.env` container mới sẽ dùng. Lệnh **chỉ in TÊN biến, không in giá trị**, không mở cổng, không nối cơ sở dữ liệu hay Redis.
+
+```bash
+docker run --rm --network none --env-file .env --entrypoint sh <kho ảnh Diso cấp>/creator-os/app:vX.Y.Z -c 'cd /repo && pnpm --filter @app/api preflight:env'; echo "mã thoát: $?"
+```
+
+| Mã thoát | Nghĩa | Dòng in ra |
+|---|---|---|
+| `0` | đạt | `OK: required variables present, no forbidden setting` |
+| `1` | thiếu biến phải CÓ | `REQUIRED: <tên> MISSING` cho từng biến thiếu (`JWT_SECRET`, `INTERNAL_API_SECRET`) |
+| `2` | còn biến/giá trị bị cấm | `FORBIDDEN: DEV_FIXED_OTP SET` (khi `APP_ENV` khác `develop`), `FORBIDDEN: PARTNER_SANDBOX_ENABLED SET` (khi `APP_ENV` không phải `develop` hay `staging`, tức `release`, `partner` hoặc để trống), hoặc `FORBIDDEN: AUTH_PROVIDER_MODE=mock SET` |
+| `3` | cả hai | cả hai loại dòng trên |
+
+Mã khác `0` thì **dừng**: sửa `.env` rồi chạy lại, chưa đi tiếp. Lệnh này chỉ kiểm hai nhóm luật đó, không thay lớp chặn lúc khởi động.
+
+**Máy staging (sân thử riêng cho đối tác).** Cửa "gửi thử một thông báo tất toán mẫu" chỉ được bật ở sân thử. Trên máy staging: đặt `APP_ENV=staging` ở **cấu hình chạy** của máy (file compose hoặc file môi trường mà container đọc lúc khởi động) — **không** đổi build-arg của image — rồi đặt `PARTNER_SANDBOX_ENABLED=true`. Chạy lại lệnh kiểm ở trên: phải ra mã thoát `0`. **Production, `release` và `partner` không bao giờ định nghĩa `PARTNER_SANDBOX_ENABLED`**; đặt nó ở đó thì lệnh kiểm báo mã `2` và container từ chối khởi động.
+
+---
+
+## 4b. Đếm đợt đối soát đang mở trùng — TRƯỚC khi chạy migration (khi nâng lên bản có ràng buộc "một đợt đang mở")
+
+Chỉ cần với bản nói rõ điều này ở [changelog.md](changelog.md). Migration của bản đó **từ chối chạy** nếu một (đơn vị, chiến dịch, mệnh giá) đang có từ hai đợt chốt kỳ ở trạng thái `PENDING`, và nó **không tự huỷ đợt nào**. Đếm trước, trên bản sao hoặc trên chính cơ sở dữ liệu; kết quả là **số đếm**, không in dữ liệu người chơi.
+
+🔴 **Chạy bằng tài khoản BỎ QUA bảo mật theo hàng** — tài khoản có `BYPASSRLS` hoặc là superuser, **cùng loại với tài khoản chạy migration** (mục 4). Tài khoản chỉ đọc thông thường bị bảo mật theo hàng che hàng của các đơn vị khác nên trả **0 sai**; bạn đi tiếp, rồi migration (chạy bằng tài khoản có `BYPASSRLS` như mục 4) vẫn dừng lúc nâng bản. Kiểm tài khoản trước khi đếm: `SELECT rolsuper OR rolbypassrls FROM pg_roles WHERE rolname = current_user;` phải ra `t`.
+
+```sql
+SELECT count(*) AS so_bo_ba_bi_trung
+FROM (
+  SELECT tenant_id, campaign_id, denomination_code
+  FROM creator_os.point_settlement_batches
+  WHERE status = 'PENDING'
+  GROUP BY tenant_id, campaign_id, denomination_code
+  HAVING count(*) > 1
+) d;
+```
+
+| Kết quả | Việc làm |
+|---|---|
+| `0` | đi tiếp mục 4 |
+| lớn hơn `0` | **dừng**: bộ phận vận hành huỷ hoặc xác nhận đợt thừa trên màn Chốt kỳ điểm (quyết định nghiệp vụ), rồi đếm lại tới khi ra `0` |
+
+---
+
+## 4c. Biến tuỳ chọn mới của màn đối soát điểm (đều có mặc định — không đặt cũng chạy)
+
+Bốn biến giới hạn kích thước danh sách chi tiết và file xuất của màn đối soát. Giá trị không phải số nguyên dương thì hệ thống dùng lại mặc định. Các mặc định là **ước lượng, chưa đo** trên dữ liệu thật; nếu bạn có chiến dịch rất lớn và gặp lỗi "quá lớn", tăng giá trị rồi báo lại số liệu thật cho Diso.
+
+| Biến | Mặc định | Giới hạn gì |
+|---|---|---|
+| `RECONCILIATION_LINES_MAX_EVENTS` | `100000` | số sự kiện tối đa trong danh sách chi tiết đối soát |
+| `RECONCILIATION_LINES_MAX_ENTRIES` | `500000` | số dòng ghi điểm tối đa trong danh sách chi tiết đối soát |
+| `RECONCILIATION_EXPORT_MAX_ROWS_XLSX` | `50000` | số dòng tối đa của file xuất Excel |
+| `RECONCILIATION_EXPORT_MAX_ROWS_CSV` | `200000` | số dòng tối đa của file xuất CSV |
+
+Chạm trần là **lỗi báo rõ**, không bao giờ cắt lặng lẽ: danh sách hoặc file không bao giờ dừng ở N dòng mà trông như đã đủ.
+
+---
+
+## 4d. Kiểm tài khoản chạy migration có quyền bỏ qua bảo mật theo hàng — TRƯỚC khi chạy migration
+
+Một số migration tạo hàm chạy bằng quyền của người tạo hàm (`SECURITY DEFINER`) và **từ chối chạy** nếu chủ sở hữu hàm không có `BYPASSRLS` (lỗi có chữ `owned by BYPASSRLS role`). Thiếu thuộc tính này, nâng bản dừng giữa chừng, các migration đã chạy không tự hoàn lại, bạn phải khôi phục bản chụp cơ sở dữ liệu. Kiểm trước, chỉ đọc, bằng chính tài khoản chạy migration (mục 4):
+
+```sql
+SELECT rolname, rolbypassrls FROM pg_roles WHERE rolname = current_user;
+```
+
+| Kết quả | Việc làm |
+|---|---|
+| `rolbypassrls` là `t` | đi tiếp mục 4 |
+| `rolbypassrls` là `f` | **dừng** (kể cả khi tài khoản là siêu người dùng: các migration chỉ đọc thuộc tính `rolbypassrls`, siêu người dùng chưa gán thuộc tính này vẫn làm migration dừng): quản trị cơ sở dữ liệu (siêu người dùng) chạy `ALTER ROLE <tài khoản chạy migration> BYPASSRLS;`, ghi giờ và người chạy vào nhật ký nâng bản, rồi chạy lại câu trên |
+
+Kiểm thêm các hàm `SECURITY DEFINER` đã có mà chủ sở hữu không bỏ qua bảo mật theo hàng. Kết quả phải là **không dòng nào**:
+
+```sql
+SELECT p.proname, o.rolname AS chu_so_huu
+FROM pg_proc p
+JOIN pg_namespace n ON n.oid = p.pronamespace
+JOIN pg_roles o ON o.oid = p.proowner
+WHERE n.nspname = 'creator_os' AND p.prosecdef AND NOT o.rolbypassrls;
+```
+
+Có dòng thì chủ sở hữu hàm đó đã mất `BYPASSRLS` (ví dụ ai đó thu lại sau lần nâng bản trước): hàm kiểm soát sẽ đọc thiếu hàng. Cấp lại thuộc tính cho chủ sở hữu, hoặc báo Diso.
+
+🔴 **Đừng thu `BYPASSRLS` lại sau khi nâng bản.** Hàm `SECURITY DEFINER` chạy bằng thuộc tính của chủ sở hữu mỗi lần được gọi. Tài khoản chạy migration chỉ dùng cho `migrate deploy`, không bao giờ đặt làm `DATABASE_URL` của ứng dụng lúc chạy.
+
+---
+
 ## 4. Chạy migration — bằng image MỚI, TRƯỚC khi đổi container
 
 Cùng thứ tự Diso dùng cho bản cài của chính mình: cấu trúc cơ sở dữ liệu đi trước, ứng dụng đi sau.

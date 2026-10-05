@@ -87,6 +87,19 @@ Full context: [event-ingestion.md](./event-ingestion.md).
 | `422` | correct shape, wrong business meaning — see business codes below | MAY be present (in `details`) |
 | `429` | rate limited | — |
 
+### Batch delivery codes — `POST /api/v1/integrations/events/batch`
+
+Full context: [event-ingestion.md §14](./event-ingestion.md#14-batch-delivery). Whole-request refusals use the shapes above;
+each element of an accepted batch is answered on its own, and the per-element `code` comes from this table too.
+
+| Status | `code` | When | You do |
+|:--:|---|---|---|
+| `422` | `batch_not_enabled` | batch delivery is not enabled for your key | ask us to enable it — nothing was processed |
+| `413` | `batch_too_large` | more events than your per-batch limit | split the batch (the limit is in `details.maxEventsPerBatch`) |
+| `413` | `payload_too_large` | the request body is bigger than your byte limit | split the batch (the limit is in `details.maxBytes`) |
+| `400` | `validation_error` | per element: this element is malformed | fix that element and resend only it |
+| `500` | `internal_error` | per element: platform failure while handling this element | retry it — deduplication keeps this safe |
+
 ### `422` business codes
 
 | You sent | Code | You do |
@@ -100,6 +113,8 @@ Full context: [event-ingestion.md](./event-ingestion.md).
 | an order type whose `payload` carries a `brandCode` that is **present but empty, blank, or not a string** | `payload_field_missing` | send a usable string *(not empty, not blank)*, or omit `brandCode` entirely — a merely mismatched value returns `200`, not this |
 | `occurredAt` **older** than your lateness limit *(default 30 days)* | `event_too_late` | send sooner, or ask us to widen the limit — **do not** shift `occurredAt`, see [event-ingestion.md §5.4](./event-ingestion.md#54-occurredat--the-two-deadlines) |
 | `occurredAt` **ahead of our clock** by more than your skew limit *(default 300 s)* | `event_from_future` | fix the clock on the sending machine — widening this limit removes your own guardrail |
+| a `LINK_*` event for which no active attributed source is registered to your key | `LINK_SOURCE_UNAVAILABLE` | contact us — this is a configuration gap on our side, your payload is correct |
+| a `LINK_*` event whose envelope or `payload` does not satisfy the Program Link conversion profile | `LINK_CONVERSION_INVALID` | fix the envelope so `eventId`, `type` and `occurredAt` match the conversion carried in `payload` |
 
 ⭐ **The two `occurredAt` codes are the only ones here a resend can escape.** They apply only to events
 that are new to us — a retry of an event we already accepted returns `200 deduplicated: true` however
@@ -133,6 +148,7 @@ channel — see [README.md § Required order](./README.md#-required-order-launch
 |:--:|---|:--:|
 | `200` | consumed successfully, session established, `302` redirect to the campaign | — |
 | `401` | `INVALID_LAUNCH_CODE` — code does not exist, has expired, or was already consumed; **one code covers all three causes, deliberately** (see [campaign-launch.md §8](./campaign-launch.md#8-error-codes)) | ✅ |
+| `403` | `feature_disabled` — the campaign pays a reward, but the loyalty feature is not switched on for your tenant. The body is raw JSON, there is no page: your app shows its own screen. Do not retry, contact us | ✅ |
 
 ⚠️ **Do not try to distinguish "expired" from "already used" from "never existed" on this response.**
 Splitting it into separate statuses would let a prober learn which guess was closer to a real code —
@@ -154,6 +170,31 @@ empty response (nothing in range), and a paginated list, respectively. See
 [recovery.md §3.3](./recovery.md#33-the-three-answers-must-be-distinguishable-from-each-other) — do not
 invent new codes here; use your own API's normal error conventions.
 
+## SETTLEMENT channel — we call YOU (`POST <your settlement endpoint>`)
+
+The direction is reversed here: **you** answer, and these codes are how **we read your answer**. Full
+contract: [settlement.md](./settlement.md).
+
+| Your answer | How we read it | Our ops can send again? |
+|:--:|---|:--:|
+| `2xx` | received | — (line marked as sent) |
+| `409` | you have **already seen this `deliveryNonce`** — use it for nothing else ([settlement.md §4](./settlement.md#4-replay-protection--two-obligations-not-one)) | on a first send it is a rejection and ops can send again with a new nonce; on **Ask partner again** it closes the line as sent |
+| `422` | you refuse the packet for a business reason | yes |
+| `400` · `401` · `403` · `404` · `5xx` · any other code | send failed — *"response code outside the contract"* | yes, but fix the cause first (`401`/`403`: the key) |
+| no answer in 10 seconds · connection error | send failed | yes |
+| a `3xx` redirect | send failed — we never follow redirects | yes |
+
+### When we refuse to send (you receive nothing)
+
+Before any call to you, our **Send** action is refused with a `409` on our side if we cannot name the
+recipient exactly. You see no request; these codes explain why none arrived:
+
+| Code (on our ops' screen) | Meaning | Who fixes it |
+|---|---|---|
+| `settlement_item_partner_ref_missing` | we have no `externalUserId` of yours for this player (never launched or sent an event under this integration) | you — send the player's launch or event first; then ops sends again |
+| `settlement_item_partner_ref_ambiguous` | more than one identifier of yours exists for the same player — we do not guess | us — resolve the duplicate identity, then send again |
+| `settlement_item_partner_namespace_unresolved` | the integration has no single identity provider across its `DIRECT` event sources | us — fix the integration, then send again |
+
 ## Cross-channel notes
 
 - A `401` on **any** channel means the same three possible causes: bad key, bad signature, or clock
@@ -161,3 +202,19 @@ invent new codes here; use your own API's normal error conventions.
   always a `4xx` other than `401` (`403`, `409`, `422`) with a distinguishing code.
 - `deliveryId` (EVENT channel) and `launchCode` (LAUNCH channel) are unrelated concepts that happen to
   both be opaque tokens — do not conflate them. See each channel's terminology section.
+
+## Asynchronous processing codes — `processing[].errorCode`
+
+These are not HTTP statuses. The door already answered `200`; the code appears later in the answer of
+`POST /integrations/deliveries` ([event-ingestion.md §15](./event-ingestion.md#15-reading-the-result-after-200)) when the
+processing of a `POINT_REDEEMED` event failed. After fixing the cause, resend the event with a **new** `eventId`.
+
+| `errorCode` | Meaning | You fix it, or you wait? |
+|---|---|---|
+| `external_payment_amount_missing` | `amountMinor` (a whole number, VND ×1) or `currency` is missing from the event | **you fix**: send all four fields; the event stays failed, so send the corrected one with a **new `eventId`** |
+| `settlement_item_not_found` | the `settlementItemId` is not a line we know | **you fix**: copy it again from the `Mã dòng` column of the statement |
+| `settlement_item_already_confirmed` | the line was already paid under another reference | **neither**: stop and reconcile with us |
+| `settlement_batch_not_confirmed` | the batch is not confirmed on our side yet | **you wait**: resend after we confirm the batch |
+| `external_payment_amount_drifted` | the amount differs from the statement | **both sides**: the line waits for our operations team to reconcile with you, then resend the agreed amount |
+| `processing_error` | any other failure; we do not publish a code for it | **you wait**: we retry; contact us if the status becomes `DEAD` |
+

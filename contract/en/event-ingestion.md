@@ -2,6 +2,8 @@
 
 Start here: [README.md](./README.md).
 
+**Profile scope:** this page describes shared transport and legacy Reward examples. PROGRAM_LINK uses the same signed endpoint with its own strict payload and optional buyer externalUserId; Campaign LAUNCH does not apply. Follow [program-link.md](program-link.md) for the complete Link contract. Reward/session statements below apply only to legacy Reward.
+
 > 🔴 An event only produces a reward if the user has already gone through the LAUNCH channel at least
 > once. This channel alone is not sufficient — see [README.md § Required order](./README.md).
 
@@ -22,6 +24,9 @@ Partner server                          Creator-OS
      │◀──────────────────────────────────────┤
      │  200 { eventId, deliveryId, deduplicated }
 ```
+
+> **Sending many events at once?** See [§14 Batch delivery](#14-batch-delivery): `POST /api/v1/integrations/events/batch`.
+> It is a different way to *carry* events — every event inside keeps exactly the same shape and rules described in this page.
 
 This channel is one-directional: your server calls ours. We never call your server as part of this
 channel (see [recovery.md](./recovery.md) for the one exception — the reverse direction used for
@@ -109,7 +114,7 @@ logging layers), make sure it does not touch the body after you have signed it.
 ### 3.2 Worked example
 
 ```bash
-API='https://<your-sandbox-host>/api/v1'
+API='https://<the host of the environment you are using>/api/v1'
 ACCESS_KEY='AK-DEMO-001'
 MASTER_SECRET='<your masterSecret — 43-char base64url, shown once>'
 EVENT_VERSION=1                                       # EVENT channel version, we tell you at issue time
@@ -208,7 +213,7 @@ Two more, if you want certainty:
 | Field | Type | Required | Description | Constraints |
 |---|---|:--:|---|---|
 | `eventId` | string | **YES** | Business event identity — the deduplication key | MUST be unique in your system; MUST NOT change across retries of the same event; see §6 |
-| `externalUserId` | string | **YES** | Your user's identifier | 🔴 MUST equal `externalUserId` on the LAUNCH channel, same format/case, for the same user (README) |
+| `externalUserId` | string | **YES for legacy Reward; optional for validated PROGRAM_LINK** | Your user's identifier | 🔴 MUST equal `externalUserId` on the LAUNCH channel, same format/case, for the same user (README) |
 | `type` | string | **YES** | Event category | MUST be one of the closed catalog in §5.2; case-sensitive |
 | `occurredAt` | RFC 3339 / ISO-8601 | **YES** | When the business event happened | timezone MUST be UTC (`Z`); must be inside the freshness window, §5.4 |
 | `payload` | object | **YES** | Type-specific business data | shape varies by `type`, §5.3 |
@@ -286,7 +291,7 @@ order — those rewards stay counted. One order, one `orderId`, across `ORDER_CR
 `UI_ACTION` — **`actionKey` is REQUIRED**:
 
 ```jsonc
-{ "actionKey": "brand" }
+{ "actionKey": "<canonical-action-key-assigned-to-you>" }
 ```
 
 `POINT_REDEEMED` — **you paid, you report back** *(opened 2026-09-03)*:
@@ -312,13 +317,26 @@ to pay. You pay, then send **one event per line you paid**.
 
 The envelope's `occurredAt` is **when you paid**, not when you send the event.
 
+**Which user.** The envelope's top-level `externalUserId` is the user you paid — the very value you received
+in the settlement packet ([settlement.md §2.1](./settlement.md#21-request-body)) or in the statement's
+`Mã người chơi (đối tác)` column. **We find the line by `settlementItemId`, not by `externalUserId`:** a
+wrong `externalUserId` does not redirect the payment to another line, and a right one cannot rescue a wrong
+`settlementItemId`.
+
+**Required if you receive settlement packets.** If you declared a settlement address
+([settlement.md §5](./settlement.md#5-after-you-pay--report-it-with-point_redeemed)), sending this event for
+every line you paid is **mandatory**: it is the only thing that closes the line. Unreported lines appear on
+our ops' overdue list after 7 days (default).
+
 🔴 **The amount must MATCH the statement.** Off by one đồng and we **reject that line and record
-nothing** — the error names both numbers so the two sides can reconcile. The statement is a stamped
+nothing**. The `200` only tells you we stored your event; the result of booking it comes later, and you read it with
+`POST /integrations/deliveries` ([§15](#15-reading-the-result-after-200)). The statement is a stamped
 document and the money has already left your hands, so this is a conversation between two parties, not
 something a machine should decide.
 
-| Error code | Meaning | What you do |
+| Error code *(read it as `processing[].errorCode`, §15)* | Meaning | What you do |
 |---|---|---|
+| `external_payment_amount_missing` | `amountMinor` (a whole number, VND ×1) or `currency` is missing from the event | send all four fields, then resend with a new `eventId` |
 | `settlement_item_not_found` | the line ID does not exist | re-copy it from the `Mã dòng` column |
 | `settlement_batch_not_confirmed` | the batch is not confirmed on our side yet | **resend later** — not your fault |
 | `settlement_item_already_confirmed` | this line was already paid under a different reference | stop and reconcile with us |
@@ -330,13 +348,17 @@ recorded**, because there is nothing to reconcile against. Always send all four 
 
 🔴 **We define `actionKey`; you send that exact string.** It is the only thing that tells UI behaviors
 apart — `UI_ACTION` is **one** type shared by every UI behavior, so without `actionKey` nobody knows
-which behavior you just reported.
+which behavior you just reported. `actionKey` is a **canonical semantic identifier the platform
+defines** — you map your internal representation to it at your own boundary, you do not invent it and
+report it to us.
 
-| Behavior | `actionKey` to send |
-|---|---|
-| user clicks a brand in Cashback Shopping | `brand` |
+We do not publish one fixed global list here — the exact strings depend on which UI behaviors your
+integration is configured for, and that set changes whenever a campaign is configured. Read the current
+set for your own campaign from its campaign screen in the console, or ask your onboarding contact. Do not copy an
+`actionKey` you saw for a different integration or a different campaign — it may no longer be the value
+that campaign is configured to match.
 
-⚠️ **Case-sensitive, compared as a raw string.** `brand` ≠ `Brand` ≠ `BRAND`. Get the
+⚠️ **Case-sensitive, compared as a raw string.** Get the
 case wrong and the event is **still accepted and still returns `200`**, but the entitlement tied to that
 behavior is **never counted** — and no error is raised to tell you.
 
@@ -403,21 +425,34 @@ the reward terms applies, so shifting it changes what the event is worth — for
 invoice. Send the true time. If your real delivery lag genuinely exceeds the limit, the limit is the
 thing that should move; tell us.
 
-## 6. `eventId` vs. `deliveryId` — do not confuse them
+## 6. `eventId`, `deliveryId`, `batchId` — three identifiers, three levels
+
+```text
+eventId     = one business event                 · YOU generate it   · used for DEDUPLICATION
+deliveryId  = our receipt for ONE event          · WE generate it    · used for TRACING
+batchId     = ONE HTTP call (batch route only)   · WE generate it    · used for CORRELATION (not stored)
+```
 
 > **`eventId` identifies the business event.** You generate it. It MUST NOT change between retries of
 > the same real-world event.
 >
-> **`deliveryId` identifies one delivery attempt.** We generate it. Each retry MAY get a new one.
+> **`deliveryId` identifies our receipt of one event.** We generate it. Each retry MAY get a new one.
+>
+> **`batchId` identifies one call to the batch route.** We generate it and return it in that response so that
+> you and we can point at the same call in logs. It is **not stored**, it is **never** an idempotency key, and
+> you must **never send it** — a request body that contains `batchId` is rejected with `400`.
+
+A single call to `POST /integrations/events` carries one event and therefore yields one `deliveryId`. A call to
+the batch route carries N events and yields N `deliveryId` values (one per event) plus one `batchId`.
 
 ```text
 eventId = evt-123
-   ├── delivery attempt #1   deliveryId = del-001   →  deduplicated: false
-   └── delivery attempt #2   deliveryId = del-002   →  deduplicated: true
+   ├── receipt #1   deliveryId = del-001   →  deduplicated: false
+   └── receipt #2   deliveryId = del-002   →  deduplicated: true
 ```
 
 ⭐ **Record `deliveryId` on your side.** When something goes wrong, it is the one term both sides can
-use to refer to the exact same delivery attempt — instead of describing "the one around 9am".
+use to refer to the exact same receipt — instead of describing "the one around 9am".
 
 ⚠️ **`deliveryId` MAY be absent** in a response. That means our trace store did not record one for that
 attempt — your event was still received and stored durably. Absence is not an error; do not retry
@@ -496,8 +531,11 @@ integration and **MUST NOT** change for retries of the same business event.
 | `401` | Bad key, bad signature, or expired timestamp — one message covers all three | ✗ | check credentials/clock, then resend |
 | `404` | Route does not exist | ✗ | fix the URL |
 | `422` | Correct shape, wrong **business** meaning — see [error-codes.md](./error-codes.md) | MAY be present (in `details`) | **do not blindly retry** — read the `code` field |
+| `413` | Request body over the **100 KB** ceiling — see [§10b](#10b-request-body-size-ceiling) | ✗ | **do not resend the same packet** — split it or trim `payload` |
 | `429` | Rate limited | — | read `Retry-After`, wait, resend |
 | `5xx` | Platform failure | — | retry with backoff |
+
+> The batch route has its own contract — including which errors reject a whole batch — in [§14](#14-batch-delivery).
 
 **`200` does not promise a reward was granted** — see §5.1 and [README.md § Required order](./README.md)
 for the three reasons an accepted event can still produce zero reward.
@@ -523,7 +561,7 @@ eventId → MUST remain unchanged
 payload → MUST remain semantically unchanged
 ```
 
-**What changes across retries?** `deliveryId` — we mint a new one per delivery attempt (§6).
+**What changes across retries?** `deliveryId` — we mint a new one for each receipt (§6).
 
 ## 10. Rate limiting
 
@@ -539,6 +577,24 @@ Limit: 600 requests/minute per Access Key.
 If these headers are absent from a response: treat it as **no rate-limit information available** for
 that request — do not infer you have unlimited quota.
 
+## 10b. Request body size ceiling
+
+A request body on the single-event route (`POST /integrations/events`) may be at most **100 KB** *(102,400 bytes; measured after decompression if
+the request is gzip-encoded)*. Above it the gateway answers `413` with a **JSON** body in the same shape as every other error — not
+an HTML page:
+
+```json
+{ "code": "payload_too_large", "title": "payload_too_large", "status": 413,
+  "detail": "Thân request vượt trần cho phép.", "details": { "maxBytes": 102400 } }
+```
+
+`413` is a fault of the **packet**, not a transient failure: resending it unchanged returns `413` again. A normal
+event is many times smaller than this ceiling; if your `payload` reaches it, contact us rather than splitting
+ad hoc. A malformed JSON body returns `400` with `code: "invalid_json"` (also JSON, and it never echoes the
+body you sent).
+
+The batch route has larger, configurable ceilings — see [§14.5](#145-three-ceilings).
+
 ## 11. Recovery
 
 Recovery (reconciliation, backfill, replay) is an **optional** capability, fully described in
@@ -549,7 +605,10 @@ Recovery (reconciliation, backfill, replay) is an **optional** capability, fully
 | Term | Meaning here |
 |---|---|
 | **event** | something that happened in your system — a completed order, a cancellation. One event = one `eventId` |
-| **delivery** | one HTTP call carrying an event to us. One event MAY have multiple deliveries |
+| **delivery** | our receipt of ONE event (it gets a `deliveryId`). A single-event call produces one; a batch call produces one per event. One event MAY have multiple deliveries |
+| **batch** | one HTTP call to the batch route carrying N events. A transport convenience — not a business object, not stored, no idempotency of its own |
+| **ingest disposition** | our answer for one event at the door: `accepted` · `deduplicated` · `rejected`. A closed set |
+| **economic outcome** | what happens to the event *after* it is accepted (evaluation, reward). The door says nothing about it |
 | **envelope** | the outer JSON shape (`eventId`, `type`, `occurredAt`, …), as opposed to `payload` |
 | **deduplication** | the guarantee that a given `eventId` is counted exactly once, no matter how many deliveries carry it |
 | **freshness** | the ±5-minute timestamp check that rejects replayed requests |
@@ -589,6 +648,164 @@ Not recommended, and for the **recovery** channel specifically, **not allowed** 
 separate integration with its own key. Sharing means a request signed for one server verifies on the
 other.
 
+**Does `accepted` in a batch mean the reward was granted?**
+No. `accepted` ≠ evaluated ≠ reward granted. See §14.3.
+
 **Is there a payload size limit?**
 Extra fields are stored verbatim and cause no issue, but do not put an entire business record inside
 `payload`. Contact us first if you need to send a large block.
+
+## 14. Batch delivery
+
+`POST /api/v1/integrations/events/batch` carries **N events in one call** and answers **per event**. It is a transport
+convenience for partners with bursts of events. Nothing about an individual event changes: the same envelope
+(§5), the same `eventId` deduplication (§7), the same signature (§3), the same `payload` rules.
+
+> ⚠️ The batch route is **off by default** for each integration. Ask us to enable it for your key; we tell you the
+> limits (§14.5) that apply to you at the same time. While it is off, the route answers `422` with
+> `code: "batch_not_enabled"` and processes nothing.
+
+### 14.1 Request
+
+Same headers as §3. The signature covers the **raw bytes of the whole body**, exactly as in §3.1.
+
+```json
+{ "events": [
+  { "eventId": "evt-1", "type": "ORDER_COMPLETED", "occurredAt": "2026-09-19T08:00:00Z", "…": "…" },
+  { "eventId": "evt-2", "type": "ORDER_COMPLETED", "occurredAt": "2026-09-19T08:00:05Z", "…": "…" }
+] }
+```
+
+`events` is required and must not be empty. **Any other top-level key is rejected with `400`** (including `batchId`).
+Each element is a complete event envelope, identical to the single-event route.
+
+### 14.2 Response — `200` even when some events fail
+
+```json
+{
+  "batchId": "bat_9c1f…",
+  "errors": true,
+  "accepted": 1, "deduplicated": 1, "failed": 1,
+  "results": [
+    { "eventId": "evt-1", "status": "accepted",     "deliveryId": "del-001" },
+    { "eventId": "evt-2", "status": "deduplicated", "deliveryId": "del-002" },
+    { "eventId": "evt-3", "status": "rejected", "code": "event_type_not_registered", "retryable": false, "detail": "…" }
+  ]
+}
+```
+
+Correspondence — you can rely on both lines, always, whenever the call reaches processing (a `200`):
+
+```text
+results.length      === events.length
+results[i].eventId  === events[i].eventId      (null if that element had no usable eventId)
+accepted + deduplicated + failed === events.length
+```
+
+Each result has one `status`:
+
+| `status` | Meaning | Carries | What you do |
+|---|---|---|---|
+| `accepted` | received and durably stored | `deliveryId` | nothing — stop retrying that event |
+| `deduplicated` | we already had this `eventId` | `deliveryId` | nothing — it is counted once |
+| `rejected` | this event was not accepted | `code`, `retryable`, `detail` | if `retryable: true` resend **only this event** later; if `false` fix it first |
+
+`retryable` follows from the error: `false` for shape/meaning errors, including `validation_error`, `event_type_not_registered`,
+`unknown_event_type`, `payload_field_missing`, `derived_event_not_accepted`, `event_id_conflict`, `invalid_occurred_at`,
+`event_too_late`, `event_from_future` — see [error-codes.md](./error-codes.md); `true` for `internal_error`, which is a
+platform-side fault on that one event. Events are processed **one at a time**; a bad event never blocks the others.
+
+**Resending a whole batch is safe.** It gets a **new** `batchId`, and every event we already have comes back
+`deduplicated`. There is no "this batch was already processed" — deduplication happens per `eventId` (§7).
+Duplicates inside one batch are also fine: `[E1, E2, E1]` returns `accepted · accepted · deduplicated`.
+
+### 14.3 `accepted` does not mean the reward was granted
+
+```text
+accepted  ≠  evaluated  ≠  reward granted
+```
+
+`accepted` says only: *"this event is in our records."* It does **not** say it was evaluated against a
+campaign, and it does **not** say a reward was granted (the reasons in §13 and the README still apply). A `200` for 500
+events is not a bulk guarantee of 500 rewards — it is 500 receipts. Do not promise your users a reward on the strength
+of `accepted`.
+
+### 14.4 Array order is not chronological order
+
+```text
+✅ GUARANTEED:      results[i] ↔ events[i]
+🔴 NOT guaranteed:  events[0] happened BEFORE events[1]
+```
+
+The order of the array only tells you which result belongs to which event. **When things happened is decided by
+`occurredAt`** (and `supersedes`, where you use it), never by position. Sending `[E2, E1]` produces the same outcome as
+`[E1, E2]`.
+
+Two vocabularies, kept apart: the **ingest disposition** (`accepted` / `deduplicated` / `rejected`) is what the door
+answers, and it is a closed set. The **economic outcome** happens downstream, and the door does not talk about it.
+
+### 14.5 Three ceilings
+
+Three independent ceilings protect the door. They are checked **after** authentication and **before** the first event
+is processed. If **any** one is exceeded the **whole batch is refused**: no event is processed, the response has
+**no `results`**, and nothing is consumed from your rate allowance.
+
+| # | Ceiling | Exceeded → | Notes |
+|:-:|---|---|---|
+| ① | request size in bytes | `413`, `code: "payload_too_large"`, `details.maxBytes` | default **5 MiB**; we may set another value for your key; never above **10 MiB**. ⚠️ The 10 MiB hard cap is enforced when the body is read — **before** authentication, unlike ② and ③ |
+| ② | events per batch | `413`, `code: "batch_too_large"`, `details.maxEventsPerBatch` | default **500**; `0` means batches are not allowed |
+| ③ | events per minute | `429`, `code: "rate_limit_exceeded"`, `Retry-After` | counted **per event**, not per call |
+
+**③ is per event.** A batch of N events uses N units of the same per-minute allowance as the single-event route (§10) —
+one shared counter per Access Key, whichever route you use. `RateLimit-Remaining` tells you how many events you can still
+send in the current window; if it is smaller than your batch, send a smaller batch or wait for `RateLimit-Reset`.
+⚠️ A batch larger than your **whole** per-minute allowance can never be accepted — split it. Ask us for your allowance
+when the batch route is enabled.
+
+Batch-level errors (no `results`): `400` malformed body · `401` bad key/signature/timestamp · `413` (①, ②) ·
+`422 batch_not_enabled` · `429` (③) · `5xx` platform failure (retry the whole batch with backoff; safe, per §14.2).
+
+## 15. Reading the result after `200`
+
+For some event types the `200` is only the first half of the story: we **store** the event right away and **process** it a
+moment later. If processing fails for a business reason, the `200` you already got does not change. You find out by asking.
+
+`POST /api/v1/integrations/deliveries` is the lookup door. Sign it exactly like the event route (§3), and send **exactly one**
+of the two keys:
+
+```jsonc
+{ "deliveryId": "5b0e…" }      // the value we returned at 200
+{ "externalId": "evt-123" }    // your eventId; may match several deliveries
+```
+
+```jsonc
+// by deliveryId
+{ "delivery": {
+    "deliveryId": "5b0e…", "externalId": "evt-123", "eventSource": "…",
+    "outcome": "ACCEPTED",                       // what the DOOR decided: ACCEPTED | DEDUPLICATED | REJECTED_SEMANTIC | REJECTED_STALE
+    "receivedAt": "2026-10-04T10:00:00.000Z",
+    "processing": [                              // what happened AFTER the 200
+      { "consumer": "reward-payout", "status": "FAILED",
+        "errorCode": "settlement_item_not_found", "updatedAt": "2026-10-04T10:00:05.000Z" }
+    ] } }
+// by externalId: { "deliveries": [ { …same shape… } ] }   (at most 50, newest first)
+```
+
+| `processing[].status` | Meaning | You do |
+|---|---|---|
+| `PENDING` | not processed yet | wait; ask again in a few seconds |
+| `SUCCEEDED` | processed | nothing |
+| `FAILED` | failed, and we retry automatically a few times | read `errorCode` |
+| `DEAD` | failed and we stopped retrying | read `errorCode`; contact us if it is a code you cannot fix |
+
+- **Today only `POINT_REDEEMED` has a `processing` list** (one entry, `consumer: "reward-payout"`). For every other event type, and for
+  a delivery we rejected at the door, `processing` is an empty list: nothing is promised there.
+- **`errorCode` is a code, never a sentence.** It is `null` unless the status is `FAILED` or `DEAD`. The codes are in
+  [error-codes.md](./error-codes.md#asynchronous-processing-codes--processingerrorcode); a failure we do not publish a code for is
+  reported as `processing_error`.
+- **You only ever see your own deliveries.** A delivery that belongs to someone else answers exactly like one that does not
+  exist: `{ "delivery": null }`.
+- **Resending the same `eventId` does not run the work again.** After you fix the cause, send the event with a **new**
+  `eventId`; keep the same `redemptionRef` for the same payment, so it is recorded exactly once.
+- An empty list from `externalId` means "we have no delivery with that id", not "you never sent it".
+

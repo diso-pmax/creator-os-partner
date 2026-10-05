@@ -31,7 +31,7 @@ export type NangLuc = 'QUERY_WINDOW' | 'REDELIVER_BY_ID' | 'QUERY_RESOURCE';
  * `LAUNCH` là một trục ĐỘC LẬP thứ ba: `ketQuaVaoCua`/`nangLucDaChungMinh` CỐ Ý không đọc nó,
  * `inBaoCao()` in nó ở mục báo cáo riêng.
  */
-export type Chieu = 'VAO' | 'RA' | 'LAUNCH';
+export type Chieu = 'VAO' | 'RA' | 'LAUNCH' | 'SETTLEMENT';
 
 export type KetQuaCa = {
   ma: string;
@@ -66,6 +66,8 @@ export type GoiHttp = (
      * (`undici`) KHÔNG lọc các header này ở chế độ `manual` như trình duyệt vẫn làm.
      */
     redirect?: 'follow' | 'manual';
+    /** Abort the call after this many milliseconds. SETTLEMENT-7 uses it: the platform waits 10 s, no more. */
+    timeoutMs?: number;
   },
 ) => Promise<PhanHoi>;
 
@@ -96,6 +98,21 @@ export type CauHinh = {
   launchSecret: string;
   /** Campaign THẬT, đang `active`, thuộc tenant của tích hợp — 8 ca LAUNCH launch đúng campaign này. */
   launchCampaignId: string;
+  /**
+   * YOUR settlement receiver (the URL the platform will call to hand you a settled point amount).
+   * Absent ⇒ the SETTLEMENT cases are reported as SKIPPED, never as passed.
+   */
+  settlementUrl?: string;
+  /** Secret of the SETTLEMENT channel, used by the suite to SIGN as the platform. Required when `settlementUrl` is set. */
+  settlementSecret?: string;
+  /** Sent as `X-Platform-Key-Id`; your receiver uses it to pick the secret (matters while two keys overlap). */
+  settlementKeyId?: string;
+  /**
+   * The PREVIOUS secret of the SETTLEMENT channel (the one a rotation replaces). Optional: when set, the suite adds the
+   * rotation case, which signs a packet with it under the SAME `X-Platform-Key-Id` and expects `2xx`. Use it to check that
+   * your receiver keeps the old secret next to the new one while a rotation is in flight.
+   */
+  settlementPreviousSecret?: string;
 };
 
 /** Một ca: thuần hàm, nhận cấu hình + đường gọi, trả kết quả. Không trạng thái toàn cục. */

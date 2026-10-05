@@ -1,0 +1,19 @@
+meta {
+  name: Open the launch URL (web view)
+  type: http
+  seq: 6
+}
+
+get {
+  url: {{launchUrl}}
+  body: none
+  auth: none
+}
+
+vars:pre-request {
+  channel: NONE
+}
+
+docs {
+  Run "Create a launch URL" first. The URL works once. In a real app, hand it to the web view UNCHANGED (see webview.md).
+}

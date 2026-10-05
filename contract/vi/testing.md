@@ -25,7 +25,7 @@ bạn đã thoả hợp đồng chưa, rồi mới onboard. **Bạn không cần
 ### 1.1 Chạy
 
 ```bash
-CONF_API=https://<host của môi trường bạn dùng>/api/v1 \
+CONF_API=https://<host của môi trường thử chúng tôi đã cấp>/api/v1 \
 CONF_ACCESS_KEY=<accessKey của bạn> \
 CONF_MASTER_SECRET=<masterSecret — base64url 43 ký tự> \
 CONF_EVENT_TYPE=ORDER_COMPLETED \
@@ -175,6 +175,89 @@ review đó.
 
 ---
 
+### 1.6 Kênh SETTLEMENT — 8 ca, chạy riêng
+
+Nếu bạn nhận số điểm đã tất toán ([settlement.md](./settlement.md)), hãy kiểm **bộ nhận của bạn** theo cùng
+cách. Bộ kiểm đóng vai nền tảng: nó ký `PartnerSettlementSignatureV1` và gọi vào địa chỉ bạn đưa. Nó không
+động điểm của ai, không đụng số dư của ai — số tiền trong gói là số mẫu.
+
+```bash
+CONF_SETTLEMENT_URL=https://host-cua-ban.example/settlements \
+CONF_SETTLEMENT_SECRET=<secret kênh SETTLEMENT của bạn> \
+  npx tsx run.ts
+```
+
+| Biến | Bắt buộc | Ghi chú |
+|---|:--:|---|
+| `CONF_SETTLEMENT_URL` | để chạy trục này | vắng ⇒ các ca SETTLEMENT được báo là **chưa chạy** (không bao giờ là đạt) |
+| `CONF_SETTLEMENT_SECRET` | ✅ khi đã đặt URL | hoặc đặt `CONF_MASTER_SECRET` để bộ kiểm tự dẫn xuất khoá SETTLEMENT (`CONF_SETTLEMENT_VERSION` chọn phiên bản, mặc định `1`) |
+| `CONF_SETTLEMENT_KEY_ID` | không | gửi trong `X-Platform-Key-Id`; mặc định `conformance-settlement` |
+| `CONF_SETTLEMENT_PREVIOUS_SECRET` | không | secret mà lượt xoay thay thế. Khi đặt, bộ kiểm thêm ca **thứ chín**, `SETTLEMENT-9` (bên dưới) |
+
+| Ca | Kịch bản | Kỳ vọng |
+|---|---|---|
+| `SETTLEMENT-1` | gói hợp lệ | `2xx` |
+| `SETTLEMENT-2` | cùng `deliveryNonce` lần nữa, ký lại mới | `409` |
+| `SETTLEMENT-3` | "Hỏi lại": đúng yêu cầu đó, cùng nonce | `409` |
+| `SETTLEMENT-4` | chữ ký sai | `401` (nhận cả `403`) |
+| `SETTLEMENT-5` | timestamp cũ hơn 5 phút, ký đúng | `401` (nhận cả `403`) |
+| `SETTLEMENT-6` | cùng `settlementItemId`, nonce mới | `2xx` — đừng chặn theo `settlementItemId` |
+| `SETTLEMENT-7` | thời gian trả lời | trong 10 giây |
+| `SETTLEMENT-8` | chuyển hướng | không trả `3xx`; khai địa chỉ cuối cùng |
+| `SETTLEMENT-9` *(tuỳ chọn)* | ký bằng secret **cũ**, dưới **cùng** `X-Platform-Key-Id` | `2xx` — trong lúc xoay khoá, bộ nhận của bạn phải giữ CẢ HAI secret và thử mới trước |
+
+`SETTLEMENT-9` chỉ chạy khi đặt `CONF_SETTLEMENT_PREVIOUS_SECRET`, nên tám ca trên vẫn là tám. Mã khoá không đổi giữa các phiên bản (xem [settlement.md §3](./settlement.md#3-chúng-tôi-tự-xác-thực-với-bạn--partnersettlementsignaturev1)), nên bộ nhận chỉ chọn một secret cho mỗi mã khoá sẽ rớt ca này.
+
+`SETTLEMENT-3` quan trọng hơn vẻ ngoài: khi ops của chúng tôi bấm **Hỏi lại đối tác**, chúng tôi gửi lại đúng
+gói đó với đúng nonce cũ và đọc `409` là "bạn đã nhận rồi". Trả lời khác ở đây có thể khiến chúng tôi gửi
+một khoản đã tất toán hai lần.
+
+**Có sẵn bộ nhận tham chiếu**: `examples/node/settlement-receiver.mjs`
+(Node, không phụ thuộc, MIT). Nó đạt cả 8 ca, nhớ nonce trong tệp JSON qua các lần khởi động lại, và in
+từng gói nhận được. Trong lúc xoay khoá hãy đưa nó cả hai secret, mới trước: `SETTLEMENT_SECRETS=<mới>,<cũ>`. Tự kiểm không cần mạng: `node examples/node/settlement-receiver.mjs --self-test`.
+
+`SETTLEMENT-2` và `SETTLEMENT-3` đòi đúng **`409`** cho nonce lặp lại: nút "Hỏi lại đối tác" của chúng tôi đọc `409` là "đã nhận rồi". Trả `400`, `422` hay một `200` idempotent sẽ làm hai ca này trượt.
+
+Sau reverse proxy, hãy kiểm chữ ký theo đúng đường dẫn và query như chúng tôi đã gửi; proxy viết lại đường dẫn sẽ biến mọi lượt gọi thành `401`.
+
+⚠️ Kết quả SETTLEMENT in ở khối riêng và **không** nằm trong cổng lên-thật tự động ở §1.3. Tiến trình vẫn thoát khác 0 khi có ca SETTLEMENT trượt, nên hãy tính mã thoát đó trong CI của bạn.
+
+### 1.7 Tự gửi thử một thông báo tất toán (chỉ ở sân sandbox)
+
+Thay vì chờ ops của chúng tôi bấm **Gửi**, bạn có thể nhờ sân sandbox gửi **một thông báo tất toán mẫu** tới địa chỉ
+bạn đã đưa ([settlement.md §2.0](./settlement.md)). Nó **chỉ tồn tại ở sân sandbox**: ở cụm khác route này
+không có và trả `404`.
+
+```bash
+BODY='{}'
+TS=$(date +%s)
+SIG="sha256=$(printf '%s.%s' "$TS" "$BODY" | openssl dgst -sha256 -hmac "$EVENT_KEY" -r | cut -d' ' -f1)"
+curl -sS -X POST "https://<host của môi trường thử chúng tôi đã cấp>/api/v1/integrations/settlement/test" \
+  -H "Content-Type: application/json" -H "X-API-Key: $ACCESS_KEY" \
+  -H "X-Timestamp: $TS" -H "X-Signature: $SIG" -d "$BODY"
+```
+
+Ký như một sự kiện, bằng khoá kênh **EVENT** của bạn ([event-ingestion.md §3](./event-ingestion.md#3-xác-thực)); thân là `{}`.
+Bạn không truyền địa chỉ: chúng tôi gửi tới địa chỉ ops của chúng tôi đã khai cho tích hợp của bạn.
+
+| Câu trả lời | Nghĩa |
+|---|---|
+| `{ "outcome": "SENT_OK", "httpStatus": 200, "code": "sent" }` | bộ nhận của bạn trả `2xx` |
+| `PARTNER_REJECTED` · `partner_rejected` | bộ nhận trả `409` hoặc `422`. Ở lần gửi thử đầu nó phải trả `2xx` |
+| `SEND_FAILED_HTTP` · `partner_unexpected_status` | mã khác. Chỉ `2xx` là "đã nhận" |
+| `SEND_FAILED_TIMEOUT` · `partner_unreachable` | không trả lời trong 10 giây, lỗi kết nối, hoặc chuyển hướng |
+| `NOT_CONFIGURED` · `not_ready_integration` · `not_ready_endpoint` · `not_ready_key` · `not_ready_namespace` | tích hợp chưa sẵn sàng gửi điểm: nhờ ops của chúng tôi hoàn tất địa chỉ và khoá |
+| `429` | quá 6 lượt gửi thử trong một phút: chờ theo `Retry-After` |
+
+Gói mẫu trông thế nào: cùng gói như [settlement.md §2.1](./settlement.md#21-thân-request), ký bằng khoá SETTLEMENT của bạn,
+mã đợt bắt đầu bằng **`SANDBOX-`**, `externalUserId` là `sandbox-user` và một mệnh giá không tồn tại. **Đây không phải
+dòng thật: đừng ghi nó vào sổ của bạn.** Nó không mở đợt nào ở phía chúng tôi và không đổi số dư của ai.
+
+Việc cần kiểm ở phía bạn: lần gửi thử đầu được trả `2xx`; cùng một `deliveryNonce` lặp lại thì trả `409` (các ca ở §1.6 kiểm
+việc này); chữ ký được kiểm trên thân thô.
+
+---
+
 ## 2. Vector kiểm thử
 
 Con số cố định để **viết unit test cho hàm ký của bạn** — không cần mạng, không cần khoá thật. Lệch
@@ -263,7 +346,33 @@ printf '%s.%s' 1786701000 '{"externalUserId":"ext-user-000001"}' \
 
 # mã tổng đối soát (§2.4)
 printf 'evt-1\nevt-2\nevt-3' | openssl dgst -sha256 -r | cut -d' ' -f1
+
+# Kênh SETTLEMENT (§2.6) — method và đường dẫn cũng được ký
+printf '%s.POST.%s.%s' 1786698753 '/hooks/settlement?src=bank-a' '{"settlementRef":"SR-2026-09-camp-01","settlementItemId":"5b0d8e7a-3c41-4f6a-9b52-7a1e0c9d2f64","partyId":"0b8a6f2e-1d34-4c57-8e90-a3b5c7d9e1f2","externalUserId":"12345","denominationCode":"PTS","pointAmount":"100","exchangeRateSnapshot":"10","moneyAmount":"1000","moneyCurrency":"VND","deliveryNonce":"9c1f4a7e-52b8-4d03-a6e9-0f3b8d2c7a15"}' \
+  | openssl dgst -sha256 -hmac 'stl_demo_0123456789abcdef' -r | cut -d' ' -f1
 ```
+
+### 2.6 Kênh SETTLEMENT — `PartnerSettlementSignatureV1`
+
+Chúng tôi gọi **bạn**, nên đây là chữ ký bạn **kiểm**. Cùng dạng với RECOVERY (§2.3) — method và đường dẫn
+nằm trong chuỗi ký — nhưng có thân, và dùng secret SETTLEMENT.
+
+```text
+secret     :  stl_demo_0123456789abcdef
+timestamp  :  1786698753
+method     :  POST
+path       :  /hooks/settlement?src=bank-a
+body       :  {"settlementRef":"SR-2026-09-camp-01","settlementItemId":"5b0d8e7a-3c41-4f6a-9b52-7a1e0c9d2f64","partyId":"0b8a6f2e-1d34-4c57-8e90-a3b5c7d9e1f2","externalUserId":"12345","denominationCode":"PTS","pointAmount":"100","exchangeRateSnapshot":"10","moneyAmount":"1000","moneyCurrency":"VND","deliveryNonce":"9c1f4a7e-52b8-4d03-a6e9-0f3b8d2c7a15"}
+             (341 bytes, KHÔNG có xuống dòng cuối)
+
+signing string :  1786698753.POST./hooks/settlement?src=bank-a.{"settlementRef":"SR-2026-09-camp-01",…}
+
+RESULT     :  sha256=8ddc17d7f9971d337114de47b256c2bacd0c1bd333ca0b566eb3569927f1c67b
+```
+
+⚠️ **Query string là một phần của đường dẫn được ký** — `?src=bank-a` nằm trong chuỗi ký. Kiểm theo đường dẫn
+và query đúng như trên dòng request. ⚠️ **Thân được ký ở dạng byte thô**, gồm cả `externalUserId` và
+`deliveryNonce`; đừng parse rồi serialize lại trước khi kiểm.
 
 ---
 
@@ -283,8 +392,10 @@ request nào** — đây không phải một lượt cutover theo lịch.
 ngay khi nó bị thu hồi. ⇒ Chuyển **mọi** máy chủ sang secret mới **trước khi** báo chúng tôi thu hồi
 secret cũ.
 
-⭐ Ở chiều ngược ([recovery.md § Chúng tôi tự xác thực với bạn](./recovery.md)), bạn chấp nhận **hai**
-secret cùng hợp lệ một lúc và tra theo `X-Platform-Key-Id` — cùng cơ chế, đổi vai.
+⭐ Chiều ngược ([recovery.md](./recovery.md), [settlement.md](./settlement.md)) **không** cùng cơ chế.
+`X-Platform-Key-Id` giữ nguyên qua các phiên bản, và chúng tôi ký bằng khoá **mới** ngay khi một lượt xoay hoàn tất. Hãy
+dẫn xuất và nạp phiên bản mới **trước** khi nó hoàn tất (luôn là phiên bản hiện tại cộng một), chấp nhận cả hai secret và
+thử mới trước, và chuẩn bị cho một cửa sổ `401` ngắn nếu bạn nạp trễ.
 
 Điều này áp dụng độc lập theo từng kênh — xoay secret kênh EVENT không ảnh hưởng secret kênh LAUNCH, và
 ngược lại.
@@ -293,50 +404,5 @@ ngược lại.
 
 ## 4. Checklist trước khi lên thật
 
-Tick hết mọi mục trước khi bật tích hợp này cho người dùng thật. Mục có 🔒 là bắt buộc về an toàn.
-
-### 4.1 Kênh EVENT
-
-**Ký và xác thực**
-
-- [ ] Hàm ký của bạn cho ra **đúng** kết quả ở [§2.1](#21-kênh-event--eventingresssignaturev1) — có unit test khoá vector này
-- [ ] Serialize **đúng một lần**: chuỗi bạn ký **chính là** chuỗi bạn gửi ([event-ingestion.md § Lỗi hay gặp nhất](./event-ingestion.md))
-- [ ] 🔒 Secret ký nằm ở **máy chủ**, không phải ứng dụng di động, trình duyệt, hay kho mã nguồn
-- [ ] 🔒 Secret kênh EVENT **khác** secret kênh LAUNCH — không dùng chung hàm ký
-- [ ] Đồng hồ máy chủ đồng bộ NTP, lệch dưới 1 phút
-
-**Đúng payload**
-
-- [ ] `eventId` được sinh theo **sự việc kinh doanh**, không theo lần gọi HTTP — vector kiểm hợp chuẩn #2 ([event-ingestion.md §4](./event-ingestion.md#4-vector-kiểm-hợp-chuẩn--ba-lượt-bắn-theo-đúng-thứ-tự)) trả về `deduplicated: true`
-- [ ] `orderId` là **chuỗi**, không phải số
-- [ ] `occurredAt` là **lúc việc xảy ra**, không phải lúc bạn gửi
-- [ ] Bạn biết hai hạn `occurredAt` của mình — hạn trễ và hạn lệch tương lai — và độ trễ giao hàng **tệ nhất** của bạn (hàng đợi dồn, lô chạy đêm, một lần sự cố đã từng xảy ra thật) vẫn nằm trong hạn trễ ([event-ingestion.md §5.4](./event-ingestion.md#54-occurredat--hai-cái-hạn))
-- [ ] 🔒 Một `422 event_too_late` hay `event_from_future` **không bao giờ** khiến code của bạn cấp `eventId` mới rồi gửi lại — làm vậy là biến một sự kiện trễ thành hai sự kiện kinh tế
-- [ ] `amountMinor` là **số nguyên ở đơn vị nhỏ nhất**, đi kèm `currency`
-- [ ] Một đơn hàng qua nhiều trạng thái sinh ra **nhiều `eventId`**, dùng chung một `orderId`
-
-**Vận hành**
-
-- [ ] Bạn xử lý `429`: đọc `Retry-After`, **chờ rồi gửi lại nguyên văn**
-- [ ] `RateLimit-Reset` được hiểu là **số giây**, không phải mốc epoch
-- [ ] Có backoff luỹ thừa cho `5xx` và hết giờ mạng
-- [ ] `422` **không** bị gửi lại mù — nó đi vào hàng chết hoặc báo cho người trực
-- [ ] `deliveryId` được ghi lại mỗi lượt, kể cả lượt `422`
-- [ ] Có cảnh báo khi tỉ lệ `401` tăng đột biến — dấu hiệu khoá bị thu hồi hoặc đồng hồ trôi
-
-**Lên thật**
-
-- [ ] Bộ kiểm hợp chuẩn **chiều VÀO đạt 8/8** ([§1.3](#13-mười-lăm-ca--hai-chiều-đo-hai-thứ-khác-nhau)) — đây là điều kiện lên thật
-- [ ] Ba vector kiểm hợp chuẩn ([event-ingestion.md §4](./event-ingestion.md#4-vector-kiểm-hợp-chuẩn--ba-lượt-bắn-theo-đúng-thứ-tự)) đã chạy trên **sandbox** trước
-
-### 4.2 Kênh LAUNCH
-
-Xem checklist đầy đủ ở [campaign-launch.md §9](./campaign-launch.md#9-yêu-cầu-bảo-mật) — không lặp
-lại ở đây.
-
-### 4.3 Xuyên kênh
-
-- [ ] `externalUserId` **chứng minh được** là cùng giá trị ở cả EVENT lẫn LAUNCH cho cùng một người
-      dùng — kiểm với một người dùng thật, từ đầu tới cuối, không chỉ unit test
-- [ ] Bạn đã tích hợp **cả hai** kênh, hoặc bạn cố ý chỉ chọn EVENT cho mục đích lưu vết/đối soát,
-      hiểu rằng nó không sinh quyền lợi ([README.md](./README.md))
+Checklist lên thật nay nằm ở một nơi: **[go-live.md](./go-live.md)**. Nó gồm EVENT, LAUNCH, web view, SETTLEMENT,
+khép vòng và sổ tay xử lý sự cố.

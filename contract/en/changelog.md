@@ -24,6 +24,97 @@ such as "contract 1.4.0" still leads here.
 
 No changes.
 
+## v1.2.0-rc.1 — 2026-10-06
+
+🟢 **New: send yourself a test settlement notification (sandbox only).** `POST /api/v1/integrations/settlement/test`, signed
+like an event with your EVENT key and a `{}` body, makes the sandbox send **one sample** settlement notification to the
+address our operations team declared for your integration, and answers `{ outcome, httpStatus, code }`. The sample has a
+batch reference starting `SANDBOX-` and is not a real line. It exists only on the sandbox (`404` elsewhere); at most 6 per
+minute. Details: [testing.md §1.7](./testing.md#17-send-yourself-a-test-settlement-notification-sandbox-only).
+
+🟢 **New: the settlement receiver and the conformance suite handle a key rotation.** `examples/node/settlement-receiver.mjs` now accepts
+SEVERAL secrets for one key id and tries them newest first (`SETTLEMENT_SECRETS=<new>,<old>`, or a list per key id in
+`SETTLEMENT_SECRETS_JSON`), because `X-Platform-Key-Id` stays the same across versions. The suite gains an optional ninth case,
+`SETTLEMENT-9`, run when you set `CONF_SETTLEMENT_PREVIOUS_SECRET`. Details: [testing.md §1.6](./testing.md#16-settlement-channel--8-cases-run-separately).
+
+🟡 **Corrected: key rotation when WE sign (RECOVERY and SETTLEMENT).** An earlier text said `X-Platform-Key-Id` tells you which of two
+secrets signed and that rotation never interrupts these calls. That is not how derived keys work: `X-Platform-Key-Id` is the **same
+for every version**, and the moment a rotation completes we sign with the **new** key. Derive and load the new version **before** the
+rotation completes (it is always the current version plus one), accept both secrets and try them newest first; a receiver that was late
+sees `401` for a short while, and the send can be repeated. The reference verify code in [settlement.md](./settlement.md#3-we-authenticate-ourselves-to-you--partnersettlementsignaturev1)
+and [recovery.md](./recovery.md#4-we-authenticate-ourselves-to-you--partnerrecoverysignaturev1) now takes a list of secrets.
+
+🔴 **BREAKING — statement spreadsheet: a column was inserted.** The settlement statement (`.xlsx`) we hand you gains
+**`Mã người chơi (đối tác)`** (your `externalUserId` for the player) as **column 4**, right after `Mã người chơi`. Every
+column after it moved one place to the right. If you read the file **by position**, update your reader; if you read it by
+header, nothing changes. Order before → after:
+
+| Before (10 columns) | After (11 columns) |
+|---|---|
+| 1 Mã đợt · 2 Mã dòng · 3 Mã người chơi · 4 Mệnh giá điểm · 5 Số điểm · 6 Tỷ giá đã đóng dấu · 7 Thành tiền · 8 Đơn vị tiền · 9 Trạng thái dòng · 10 Lý do loại | 1 Mã đợt · 2 Mã dòng · 3 Mã người chơi · **4 Mã người chơi (đối tác)** · 5 Mệnh giá điểm · 6 Số điểm · 7 Tỷ giá đã đóng dấu · 8 Thành tiền · 9 Đơn vị tiền · 10 Trạng thái dòng · 11 Lý do loại |
+
+The cell is empty when we cannot read your id exactly (the line state says why). Details: [settlement.md §6](./settlement.md#the-statement-file-xlsx).
+
+🟢 **New: point settlement is documented (first public release).** [settlement.md](./settlement.md) describes how we notify
+your endpoint when a point amount is settled: the request body now carries **`externalUserId`** (your id for the player; it is
+inside the signed body), the response codes we act on (`2xx` received · `409` / `422` rejected · anything else a failed send),
+**`409` is mandatory for a repeated `deliveryNonce`** (and for nothing else), the difference between **Send / Retry** (new nonce)
+and **Ask partner again** (same nonce), and the **`POINT_REDEEMED` report-back for every line you paid**. The SETTLEMENT channel
+key is now in [credential-derivation.md](./credential-derivation.md) with a vector, and the signature has a test vector in
+[testing.md §2.6](./testing.md#26-settlement-channel--partnersettlementsignaturev1). Nothing about the `EVENT` or `LAUNCH` wire behavior changes.
+
+🟢 **New: `external_payment_amount_missing` in `processing[].errorCode`.** A `POINT_REDEEMED` event without `amountMinor`
+(a whole number, VND ×1) or `currency` is still accepted with `200` at the door, but it always fails afterwards. You can now
+read that reason with `POST /integrations/deliveries` instead of a generic `processing_error`: send all four fields and resend
+with a new `eventId`. Details: [error-codes.md](./error-codes.md#asynchronous-processing-codes--processingerrorcode).
+
+🟡 **Changed meaning: `externalUserId` on launch may not contain control characters.** A value with a NUL used to make the launch
+call fail with `500`; other control characters (tab, newline, DEL…) were accepted. All of them are now refused up front with
+`400 validation_error` and no launch is created. Ordinary ids, non-ASCII ids and ids with inner spaces are unaffected.
+Details: [campaign-launch.md §4.1](./campaign-launch.md#41-request).
+
+🟢 **New: test your settlement receiver.** The conformance suite gains eight `SETTLEMENT-*` cases (replay `409`,
+"ask again" `409`, bad signature, stale timestamp, new nonce for the same item, reply time, no redirect), and
+the public repository gains a dependency-free reference receiver, `examples/node/settlement-receiver.mjs`.
+Nothing about the settlement contract itself changes. Details: [testing.md §1.6](./testing.md#16-settlement-channel--8-cases-run-separately).
+
+- 🟢 **ADDITIVE — Program Link 1.0:** [technical guide](program-link.md) for tracking, guest checkout, LINK_ORDER_* FULL_STATE snapshots, SKU mapping, EVENT signing, retry/ACK and gap recovery. Clarifies that Campaign LAUNCH/externalUserId subject requirements are legacy Reward rules; Link buyer ID is optional and never the publisher receiving the commission. No standalone Link intake or partner status/payout API is promised.
+
+🟢 **New: read the result after `200`.** `POST /integrations/deliveries` now returns a `processing` list: for `POINT_REDEEMED`,
+whether it was booked, and the **error code** when it failed (`settlement_item_not_found`, `settlement_batch_not_confirmed`,
+`settlement_item_already_confirmed`, `external_payment_amount_drifted`). Before, you only ever saw the door's `200`. The lookup
+door itself is documented here for the first time. Details: [event-ingestion.md §15](./event-ingestion.md#15-reading-the-result-after-200) ·
+[error-codes.md](./error-codes.md#asynchronous-processing-codes--processingerrorcode).
+
+🟢 **New: machine-readable specification and ready-made requests.** `openapi.yaml` (OpenAPI 3.1) and one JSON Schema per
+request body, generated from the validators our server runs; a Bruno and a Postman collection that sign every request
+for you; the error-code table now lists every code the doors can return (new rows: `feature_disabled`,
+`LINK_SOURCE_UNAVAILABLE`, `LINK_CONVERSION_INVALID`, `batch_not_enabled`, `batch_too_large`, `payload_too_large`,
+`internal_error`). Nothing about the wire behavior changes. Details: [README.md](./README.md#machine-readable-specification) ·
+[error-codes.md](./error-codes.md).
+
+🟢 **Documented for the first time: `displayName` on launch, the receipt lookup door, the web view.** Launch accepts an
+optional `displayName` (a suggestion only, [campaign-launch.md §4.1](./campaign-launch.md#41-request)). The receipt lookup
+door `POST /integrations/deliveries` is in `openapi.yaml`. How to embed the web view (cookies, native bridge) is in
+[webview.md](./webview.md).
+
+🟡 **Documented: the single-event route refuses a body over 100 KB** with `413 payload_too_large` as JSON, and `400 invalid_json`
+for broken JSON. This is how the gateway already behaves. Details: [event-ingestion.md §10b](./event-ingestion.md#10b-request-body-size-ceiling).
+
+🟡 **Changed text: `actionKey` is a canonical identifier the platform defines.** The earlier example table is gone; read the
+current values for your campaign from the console or ask your contact. Details:
+[event-ingestion.md §5](./event-ingestion.md#5-request-schema).
+
+🟢 **Go-live checklist moved.** The production checklist that lived in `testing.md` section 4 is now [go-live.md](./go-live.md),
+together with the settlement and web view items and an incident runbook. `testing.md` keeps one line pointing there.
+
+🟢 **New: batch delivery, `POST /integrations/events/batch`.** Send N events in one call and get a per-event answer.
+Off by default for each integration — ask us to enable it for your key. Nothing about a single event changes.
+Also stated for the first time: three identifiers at three levels (`eventId` · `deliveryId` · `batchId`), that
+`accepted` does not mean the reward was granted, and that array order is not chronological order. *Delivery* is now defined as our receipt of one event, not as one HTTP call. Details:
+[event-ingestion.md §6](./event-ingestion.md#6-eventid-deliveryid-batchid--three-identifiers-three-levels) ·
+[§14](./event-ingestion.md#14-batch-delivery).
+
 ## v1.1.0 — 2026-09-14
 
 🟡 **Recovery endpoints must now be public HTTPS.** `http://` addresses, and loopback, private, or

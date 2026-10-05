@@ -1,0 +1,21 @@
+{
+  "type": "object",
+  "properties": {
+    "deliveryId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "externalId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 200
+    }
+  },
+  "additionalProperties": false,
+  "title": "DeliveryLookup",
+  "description": "Body of POST /integrations/deliveries: look up the receipt of an event.",
+  "x-serverSideChecks": [
+    "send EXACTLY ONE of deliveryId or externalId; sending both or neither is a 400"
+  ]
+}

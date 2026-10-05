@@ -200,7 +200,7 @@ signature      = "sha256=" + hex_viết_thường( HMAC-SHA256( RECOVERY_SECRET,
 
 | Header | Chở gì |
 |---|---|
-| `X-Platform-Key-Id` | khoá nào của chúng tôi đã ký cái này — **dùng nó để tra đúng secret**, và đây là thứ giúp xoay khoá không gây gián đoạn |
+| `X-Platform-Key-Id` | mã khoá. Nó **giống nhau ở mọi phiên bản** của khoá nên **không** cho biết secret nào đã ký: hãy thử lần lượt các secret bạn đang giữ, mới trước (xem *Xoay khoá* bên dưới) |
 | `X-Platform-Timestamp` | Unix giây |
 | `X-Platform-Signature` | `sha256=<hex viết thường>` |
 
@@ -219,28 +219,26 @@ HMAC-SHA256 bạn đã viết cho chiều kia, chỉ đổi chuỗi đem ký.
 ```js
 const crypto = require('node:crypto');
 
-function verifyPlatformSignature(req, secretsByKeyId) {
-  const keyId = req.header('X-Platform-Key-Id');
+function verifyPlatformSignature(req, platformSecrets) {
+  // platformSecrets: mọi secret bạn đang giữ cho kênh này, mới trước. `X-Platform-Key-Id` giống nhau ở mọi phiên bản nên không chọn được secret
   const ts    = Number(req.header('X-Platform-Timestamp'));
   const given = req.header('X-Platform-Signature') || '';
 
-  // 1. Độ tươi ±5 phút, chặn cả hai chiều
+  // 1. độ tươi ±5 phút, chặn cả hai chiều
   if (!Number.isFinite(ts) || Math.abs(Date.now() - ts * 1000) > 5 * 60_000) return false;
 
-  // 2. Secret tra theo keyId — cho phép CẢ HAI secret cùng hợp lệ lúc xoay khoá (§5)
-  const secret = secretsByKeyId[keyId];
-  if (!secret) return false;
-
-  // 3. req.originalUrl = đường dẫn + query ĐÚNG NHƯ nhận được. req.rawBody = byte thô, trước khi parse JSON
+  // 2. req.originalUrl = đường dẫn + query ĐÚNG NHƯ nhận được. req.rawBody = byte thô, trước khi parse JSON
   const base = Buffer.concat([
     Buffer.from(`${ts}.${req.method.toUpperCase()}.${req.originalUrl}.`, 'utf8'),
     req.rawBody ?? Buffer.alloc(0),
   ]);
-  const expected = 'sha256=' + crypto.createHmac('sha256', secret).update(base).digest('hex');
 
-  // 4. So sánh theo thời gian hằng số — ĐỪNG dùng ===
-  const a = Buffer.from(expected), b = Buffer.from(given);
-  return a.length === b.length && crypto.timingSafeEqual(a, b);
+  // 3. Thử lần lượt từng secret; so sánh thời gian hằng — KHÔNG dùng ===
+  const b = Buffer.from(given);
+  return platformSecrets.some((secret) => {
+    const a = Buffer.from('sha256=' + crypto.createHmac('sha256', secret).update(base).digest('hex'));
+    return a.length === b.length && crypto.timingSafeEqual(a, b);
+  });
 }
 ```
 
@@ -262,10 +260,17 @@ nhất.
 [README.md](./README.md): người chạm khác nhau, nhịp xoay khác nhau. Dùng lại khoá EVENT ở đây nghĩa
 là một chỗ rò làm hỏng **cả hai** chiều cùng lúc.
 
-**Xoay khoá không làm gián đoạn endpoint này**
-([testing.md § Xoay khoá](./testing.md#3-xoay-khoá)): có một cửa sổ mà **hai** secret cùng hợp lệ.
-Kiểm `X-Platform-Key-Id` để biết chúng tôi đang ký bằng cái nào, và chấp nhận cả hai tới khi chúng tôi
-báo cái cũ đã bị thu hồi.
+**Xoay khoá** ([testing.md § Xoay khoá](./testing.md#3-xoay-khoá)). Khoá RECOVERY là khoá dẫn xuất
+([credential-derivation.md](./credential-derivation.md)). `X-Platform-Key-Id` **không đổi** khi chúng tôi xoay, và
+ngay khi một lượt xoay xong thì **chúng tôi ký bằng khoá mới**. Vì vậy:
+
+1. Hẹn ngày với ops của chúng tôi. Phiên bản mới luôn là phiên bản hiện tại cộng một, nên bạn dẫn xuất và nạp nó
+   **trước** khi lượt xoay hoàn tất.
+2. Chấp nhận **cả hai** secret và thử lần lượt, mới trước, tới khi một cái khớp.
+3. Chỉ bỏ cái cũ sau khi chúng tôi báo nó đã bị thu hồi.
+
+Nếu khoá mới chưa kịp nạp, lượt gọi của chúng tôi sẽ trả `401` trong một lúc ngắn. Đó là một lượt gọi hỏng phía chúng tôi,
+không mất dữ liệu: gửi lại được.
 
 ### 4.1 🔒 Hai giới hạn của khuôn này — nói rõ để bạn không dựa vào thứ nó không hứa
 

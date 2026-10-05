@@ -37,6 +37,63 @@ có gì thì ghi *"không"*, đừng bỏ trống:
 
 Không đổi.
 
+## v1.2.0-rc.1 — 2026-10-06
+
+Nâng từ v1.0.6.
+
+**Biến môi trường**
+
+- 🔴 `INTERNAL_API_SECRET` — **mới, bắt buộc.** Thiếu thì API **từ chối khởi động**. Tự sinh: `openssl rand -hex 32`.
+  Đặt cho container `api`, và thêm header `X-Internal-Secret: <cùng giá trị>` vào lệnh `--deploy-hook` của certbot
+  (nếu dùng tên miền riêng). Hai nơi phải cùng giá trị.
+- 🔴 `DEV_FIXED_OTP` — **cấm ngoài develop.** Còn đặt mà `APP_ENV` khác `develop` thì API từ chối khởi động.
+- 🔴 Mọi portal nay chạy dưới **đường dẫn con**, nên các biến URL phải **kết thúc đúng tiền tố**:
+
+  | Biến | Kết thúc bằng |
+  |---|---|
+  | `REWARD_PORTAL_URL` | `/reward` |
+  | `CONSOLE_PORTAL_URL` · `APP_ORIGIN` · `OAUTH_PLATFORM_LANDING_ORIGIN` | `/console` |
+  | `CREATOR_PORTAL_URL` · `CREATOR_PORTAL_ORIGIN` | `/creator` |
+
+  Đối chiếu [reward-only.env.example](reward-only.env.example) của cùng thẻ.
+- 🟡 `RUN_PARTNER_SALE` · `RUN_STOREFRONT` · `RUN_ROUTER` — **mặc định BẬT**. Bản chỉ chạy Reward có thể cần tắt
+  nếu không dùng các phần đó 
+- 🟡 **Cờ theo đơn vị `reconciliation-confirmation`**: **mặc định BẬT**: cổng chốt kỳ của Reward đòi một bước **ops xác nhận đối soát đúng** (có tích *đã đối chiếu với bảng kê đối tác ở ngoài hệ thống*) trước khi `Xác nhận chốt kỳ`. Không phải biến môi trường — bật hoặc tắt theo từng đơn vị. Đợt chốt kỳ đã lập trước khi nâng bản không bị đòi xác nhận.
+- 🟡 **Cờ theo đơn vị `leaderboard-reward-player`**: cờ bảng xếp hạng người chơi Reward, **mặc định không có**. Bật cho đơn vị cần dùng **trong bước nâng bản**; sau đó cờ hiện ở **Hệ thống → Tính năng** của đơn vị (nhãn là chính khoá), và quản trị đơn vị tự tắt hoặc bật được. Không phải biến môi trường.
+- 🟢 `RECONCILIATION_RERUN_INTERVAL_MS` — **mới**, của tác vụ nền (worker). Chu kỳ worker xem có yêu cầu *Chạy lại đối soát* nào đang chờ. Mặc định `15000` (15 giây).
+- 🟢 `RECONCILIATION_RUN_LEASE_SEC` — **mới**, của tác vụ nền. Thời gian một lượt đối soát được dành riêng trước khi coi là chết. Mặc định `1800` (30 phút), tối thiểu `60`.
+- 🟢 `OPSHUB_WEBHOOK_API_KEY` · `GUIDE_ORIGIN` · `QUOTA_CHANNEL_ENRICH_PER_DAY` · `QUOTA_CHANNEL_ENRICH_TENANT_PER_DAY` · `QUOTA_CHANNEL_ENRICH_OPS_PER_DAY` — **mới, không bắt buộc.** `OPSHUB_WEBHOOK_API_KEY` là khoá nhận webhook từ OpsHub (thiếu thì không có khoá vào); `GUIDE_ORIGIN` là nguồn sổ tay cho cổng bán hàng đối tác; ba biến `QUOTA_*` là hạn mức ngày, có mặc định trong mã.
+- 🟡 `PROGRAM_LINK_PUBLIC_BASE_URL` — **mới.** Địa chỉ công khai của API (https), dùng để tạo link chia sẻ chương trình. Thiếu thì tạo link chia sẻ trả lỗi 503 `LINK_PUBLIC_URL_UNAVAILABLE`; API vẫn khởi động. Nên đặt nếu dùng tính năng link.
+- 🟢 `AUDIENCE_GOOGLE_SA_KEY` · `EKYC_GOOGLE_SA_KEY` · `NOTIFICATION_GOOGLE_SA_KEY` · `PII_KEY_GOOGLE_SA_KEY` · `SECRETS_GOOGLE_SA_KEY` (và `*_GOOGLE_PROJECT_ID` tương ứng) — **mới, không bắt buộc.** Mỗi cụm có khoá riêng; thiếu thì dùng `GOOGLE_SERVICE_ACCOUNT_KEY` như v1.0.6. Cấu hình chỉ đặt biến cũ vẫn chạy.
+- 🟢 **Nhóm `MARKETPLACE_*` và `TIKTOK_*` — chỉ cần khi bật kết nối sàn.** Mặc định tắt (`MARKETPLACE_SYNC_ENABLED`); không bật thì bỏ qua cả nhóm. Bật thì: ở production phải đặt `MARKETPLACE_HMAC_SECRET_NAME` (không có khoá dự phòng như môi trường dev); `TIKTOK_SHOP_REDIRECT_URI` mặc định trỏ `http://localhost:3001/...` nên **phải đặt** lại; `TIKTOK_APP_ID`, `TIKTOK_APP_KEY`, `TIKTOK_APP_SECRET` lấy từ ứng dụng của sàn. Các biến `TIKTOK_LIFECYCLE_WEBHOOK_FIXTURE_*` chỉ dành cho sân thử — để trống ở production.
+- 🟡 `STOREFRONT_HOSTS` — rỗng nghĩa là không chặn host nào (cố ý). Môi trường thật khai danh sách tên miền, phân cách bằng dấu phẩy.
+
+**Việc phải làm tay**
+
+- 🔴 Image chỉ mở **một cổng** — router, `8080`. Đổi cổng publish trong compose sang `8080`; proxy phía trước chỉ còn **một** `proxy_pass`.
+- 🔴 **Tài khoản chạy migration phải có thuộc tính `BYPASSRLS`** — kiểm **trước** khi nâng bản (mục 4d của upgrade.md). Thiếu thì nâng bản **dừng giữa chừng** ở migration 3540, khi cơ sở dữ liệu đã chạy dở.
+- 🔴 **Kiểm trước khi nâng:** Launch nay **từ chối** tích hợp có từ **2 namespace DIRECT khác nhau** (trước đây lấy nguồn đầu tiên theo thứ tự tuỳ ý). Có tích hợp như vậy thì liên hệ hỗ trợ (mục 8 của [upgrade.md](upgrade.md)) **trước** khi nâng.
+- 🔴 **Đếm đợt đối soát đang mở trùng — TRƯỚC khi chạy migration.** Bản này thêm ràng buộc *mỗi (đơn vị, chiến dịch, mệnh giá) tối đa MỘT đợt chốt kỳ đang mở (`PENDING`)*. Migration **không tự huỷ đợt nào**: nếu cơ sở dữ liệu đang có từ hai đợt `PENDING` trở lên cho cùng một bộ ba, migration dừng. Việc huỷ hay xác nhận đợt thừa là quyết định nghiệp vụ của vận hành, làm **trước** khi nâng. Đếm bằng tài khoản **có quyền bỏ qua phân quyền theo đơn vị** (như tài khoản chạy migration; xem [upgrade.md](upgrade.md)), chỉ đọc. Tài khoản thường sẽ ra kết quả **0 sai**:
+
+  ```sql
+  SELECT tenant_id, campaign_id, denomination_code, count(*) AS pending_batches
+    FROM creator_os.point_settlement_batches
+   WHERE status = 'PENDING'
+   GROUP BY 1, 2, 3 HAVING count(*) > 1;
+  ```
+
+  Có dòng nào thì vận hành chọn đợt giữ, huỷ phần còn lại bằng màn Chốt kỳ, rồi mới nâng.
+- 🟡 **Quyền mới `point_settlement:confirm_reconciliation`**: migration cấp cho **mọi vai đang giữ quyền xác nhận chốt kỳ lúc nâng bản**, kể cả vai tuỳ biến. Vai tạo **sau** nâng bản, hoặc được cấp quyền chốt kỳ sau đó, **không tự có** và phải cấp thêm; ai có quyền chốt kỳ mà thiếu quyền này sẽ kẹt ở bước chốt. Có thêm migration (bảng lưu xác nhận, cột đánh dấu đợt) chạy trong bước migration thường lệ.
+- 🟢 **File đối soát Excel hai sheet**: tổng hợp theo loại sự kiện và chi tiết từng dòng; tải cần quyền xem chốt kỳ (`point_settlement:read`) **cộng** hai quyền xuất file (`export:create`, `export:read`). Không cần cấu hình thêm.
+- 🟡 **Giờ quét đối soát tự động cố định**: mỗi ngày **một lượt** vào giờ Việt Nam cố định thay cho "24 giờ kể từ lúc worker khởi động". Biến mới của worker: `REWARD_DRIFT_SWEEP_HOUR_VN` (giờ trong ngày, mặc định `2`) và `REWARD_DRIFT_CHECK_INTERVAL_MS` (nhịp kiểm, mặc định 5 phút). **`REWARD_DRIFT_SWEEP_INTERVAL_MS` không còn được đọc** — gỡ khỏi cấu hình nếu có.
+- 🔴 **`PARTNER_SANDBOX_ENABLED=true` chỉ dùng ở sân thử.** Cửa "gửi thử một thông báo tất toán mẫu" chỉ bật được khi `APP_ENV` là `develop` hoặc `staging`; bản release và bản đối tác **cấm** — container từ chối khởi động nếu đặt. Production **không** đặt biến này.
+- 🟡 **Chạy đúng MỘT worker** (`RUN_WORKER=true` ở đúng một container, như `upgrade.md` mục 5): hai worker cùng tick thì một chiến dịch có thể nhận hai báo cáo đối soát tự động — báo cáo trùng, số liệu không sai.
+- 🟡 **Ba migration mới** (nút *Chạy lại đối soát*): bảng yêu cầu chạy lại, cột giờ bắt đầu của báo cáo lệch, quyền mới gán vào vai. Chạy trong bước migration thường lệ ở mục 4 của [upgrade.md](upgrade.md); không cần làm tay thêm.
+- 🔴 **API và worker phải dùng chung nguồn giờ NTP**: lượt đối soát so giờ giữa hai tiến trình, lệch giờ thì lượt chạy bị coi là cũ hoặc đã chết.
+- 🟡 Chỉ khi bật **tên miền riêng + chứng chỉ tự động**: các mount `CERT_ANSIBLE_*` trên máy chạy compose.
+
+**Quay lui** — 🔴 **không quay lui được bằng image cũ** — chỉ khôi phục bản sao lưu. Xem mục 7 của [upgrade.md](upgrade.md).
+
 ## v1.1.0 — 2026-09-14
 
 **Biến môi trường** — không thêm, không bỏ biến nào. Tên người dùng trong hai chuỗi kết nối nay cố định:

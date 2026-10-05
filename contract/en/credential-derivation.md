@@ -20,7 +20,7 @@ announced by Creator-OS:
 | Info | UTF-8 `integration:channel:<CHANNEL>:v<VERSION>` |
 | Output | 32 bytes, encoded as unpadded base64url |
 
-`CHANNEL` is uppercase: `EVENT`, `LAUNCH`, `RECOVERY` (and `AUTH` for a legacy integration). The
+`CHANNEL` is uppercase: `EVENT`, `LAUNCH`, `RECOVERY`, `SETTLEMENT` (and `AUTH` for a legacy integration). `RECOVERY` and `SETTLEMENT` only matter if you build those optional endpoints. The
 version is a positive decimal integer returned by Creator-OS; never guess it.
 
 ```js
@@ -80,6 +80,7 @@ derive() {   # derive <CHANNEL> <VERSION>
 EVENT_KEY=$(derive EVENT 1)        # sign events    → event-ingestion.md
 LAUNCH_KEY=$(derive LAUNCH 1)      # sign launches  → campaign-launch.md
 RECOVERY_KEY=$(derive RECOVERY 1)  # VERIFY what we send you → recovery.md
+SETTLEMENT_KEY=$(derive SETTLEMENT 1)  # VERIFY the point notifications we send you → settlement.md
 ```
 
 ## Four integration mistakes — read before debugging a `401`

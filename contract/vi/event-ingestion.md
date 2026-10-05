@@ -4,6 +4,8 @@ Bắt đầu từ: [README.md](./README.md). *(bản dịch của
 [en/event-ingestion.md](../en/event-ingestion.md) — bản tiếng Anh là nguồn chốt, lệch thì bản tiếng
 Anh thắng)*
 
+**Phạm vi profile:** trang này mô tả transport chung và ví dụ legacy Reward. PROGRAM_LINK dùng cùng endpoint ký, payload strict riêng và externalUserId buyer tuỳ chọn; không áp Campaign LAUNCH. Đọc [program-link.md](program-link.md) cho contract Link đầy đủ. Các câu về Reward/session bên dưới chỉ áp legacy Reward.
+
 > 🔴 Một sự kiện chỉ sinh quyền lợi nếu người dùng đó đã qua kênh LAUNCH ít nhất một lần. Kênh này một
 > mình không đủ — xem [README.md § Thứ tự bắt buộc](./README.md).
 
@@ -24,6 +26,9 @@ Partner server                          Creator-OS
      │◀──────────────────────────────────────┤
      │  200 { eventId, deliveryId, deduplicated }
 ```
+
+> **Gửi nhiều sự kiện cùng lúc?** Xem [§14 Gửi theo lô](#14-gửi-theo-lô): `POST /api/v1/integrations/events/batch`.
+> Đó chỉ là một cách *chuyên chở* khác — mọi sự kiện bên trong vẫn giữ đúng hình dạng và luật mô tả ở trang này.
 
 Kênh này một chiều: máy chủ của bạn gọi chúng tôi. Chúng tôi không bao giờ gọi ngược lại máy chủ của
 bạn ở kênh này (xem [recovery.md](./recovery.md) cho ngoại lệ duy nhất — chiều ngược dùng cho đối
@@ -110,7 +115,7 @@ logging), hãy chắc nó không chạm vào thân request sau khi bạn đã k�
 ### 3.2 Ví dụ đầy đủ
 
 ```bash
-API='https://<host của môi trường bạn dùng>/api/v1'   # xem bảng môi trường ở README.md
+API='https://<host của môi trường bạn đang dùng>/api/v1'   # xem bảng môi trường ở README.md
 ACCESS_KEY='<accessKey chúng tôi cấp>'
 MASTER_SECRET='<masterSecret — base64url 43 ký tự, hiện MỘT LẦN>'
 EVENT_VERSION=1                                       # version kênh EVENT, chúng tôi báo khi cấp
@@ -213,7 +218,7 @@ Hai lượt nữa nếu bạn muốn chắc:
 | Trường | Kiểu | Bắt buộc | Mô tả | Ràng buộc |
 |---|---|:--:|---|---|
 | `eventId` | chuỗi | **CÓ** | Định danh sự việc kinh doanh — khoá chống trùng | PHẢI duy nhất trong hệ thống của bạn; PHẢI KHÔNG đổi qua các lượt gửi lại của cùng sự việc; xem §6 |
-| `externalUserId` | chuỗi | **CÓ** | Định danh người dùng của bạn | 🔴 PHẢI bằng `externalUserId` ở kênh LAUNCH, cùng định dạng/hoa-thường, cho cùng một người dùng (README) |
+| `externalUserId` | chuỗi | **CÓ legacy Reward; tuỳ chọn PROGRAM_LINK hợp lệ** | Định danh người dùng của bạn | 🔴 PHẢI bằng `externalUserId` ở kênh LAUNCH, cùng định dạng/hoa-thường, cho cùng một người dùng (README) |
 | `type` | chuỗi | **CÓ** | Loại sự kiện | PHẢI là một giá trị trong danh mục đóng §5.2; phân biệt hoa/thường |
 | `occurredAt` | RFC 3339 / ISO-8601 | **CÓ** | Lúc sự việc kinh doanh xảy ra | múi giờ PHẢI là UTC (`Z`); và phải nằm trong hạn độ tươi, §5.4 |
 | `payload` | object | **CÓ** | Dữ liệu nghiệp vụ theo từng loại | hình dạng thay đổi theo `type`, §5.3 |
@@ -290,7 +295,7 @@ suốt `ORDER_CREATED` → `ORDER_COMPLETED` → `ORDER_CANCELLED`, mỗi nhịp
 `UI_ACTION` — **`actionKey` là BẮT BUỘC**:
 
 ```jsonc
-{ "actionKey": "brand" }
+{ "actionKey": "<canonical-action-key-assigned-to-you>" }
 ```
 
 `POINT_REDEEMED` — **bạn đã trả tiền, báo về** *(mở 2026-09-03)*:
@@ -316,12 +321,24 @@ số tiền phải trả. Bạn trả tiền, rồi gửi về **một sự ki�
 
 `occurredAt` của phong bì là **mốc bạn đã trả**, không phải lúc bạn gửi tin.
 
+**Người dùng nào.** `externalUserId` ở cấp trên cùng của phong bì là người bạn đã trả — chính giá trị bạn nhận
+trong gói settlement ([settlement.md §2.1](./settlement.md#21-thân-request)) hoặc ở cột `Mã người chơi (đối tác)`
+của bảng kê. **Chúng tôi tìm dòng bằng `settlementItemId`, không bằng `externalUserId`:** `externalUserId` sai không
+chuyển khoản trả sang dòng khác, và `externalUserId` đúng cũng không cứu được một `settlementItemId` sai.
+
+**Bắt buộc nếu bạn nhận gói settlement.** Nếu bạn đã khai địa chỉ nhận điểm
+([settlement.md §5](./settlement.md#5-sau-khi-bạn-trả--báo-lại-bằng-point_redeemed)), gửi sự kiện này cho mọi dòng
+bạn đã trả là **bắt buộc**: đó là thứ duy nhất khép dòng. Dòng chưa báo sẽ vào danh sách quá hạn của ops chúng tôi
+sau 7 ngày (mặc định).
+
 🔴 **Số tiền phải KHỚP số trên bảng kê.** Lệch một đồng là chúng tôi **từ chối dòng đó và không ghi
-gì** — câu lỗi nêu cả hai số để hai bên đối chiếu. Bảng kê là chứng từ đã đóng dấu, còn tiền thì đã rời
+gì**. `200` chỉ cho bạn biết chúng tôi đã lưu sự kiện; kết quả ghi sổ đến sau, và bạn đọc nó bằng
+`POST /integrations/deliveries` ([§15](#15-đọc-kết-quả-sau-200)). Bảng kê là chứng từ đã đóng dấu, còn tiền thì đã rời
 tay bạn, nên đây là chuyện hai bên nói với nhau chứ không phải chuyện một cái máy quyết.
 
-| Mã lỗi | Nghĩa | Bạn làm gì |
+| Mã lỗi *(đọc ở `processing[].errorCode`, §15)* | Nghĩa | Bạn làm gì |
 |---|---|---|
+| `external_payment_amount_missing` | sự kiện thiếu `amountMinor` (số nguyên, VND ×1) hoặc `currency` | gửi đủ bốn trường rồi gửi lại với `eventId` mới |
 | `settlement_item_not_found` | mã dòng không có thật | chép lại từ đúng cột `Mã dòng` |
 | `settlement_batch_not_confirmed` | đợt chưa được chốt bên chúng tôi | **gửi lại sau** — không phải lỗi của bạn |
 | `settlement_item_already_confirmed` | dòng này đã được trả bằng một mã khác | dừng, đối chiếu với chúng tôi |
@@ -333,13 +350,16 @@ Luôn gửi đủ bốn trường.
 
 🔴 **`actionKey` do chúng tôi đặt, bạn gửi đúng chuỗi đó.** Nó là thứ duy nhất phân biệt các hành vi
 giao diện với nhau — `UI_ACTION` là **một** loại dùng chung cho mọi hành vi, nên thiếu `actionKey` thì
-không ai biết bạn vừa báo hành vi nào.
+không ai biết bạn vừa báo hành vi nào. `actionKey` là **định danh ngữ nghĩa canonical do nền tảng định
+nghĩa** — bạn ánh xạ biểu diễn nội bộ của mình sang đúng chuỗi đó ở biên của bạn, không tự đặt rồi báo
+lại cho chúng tôi.
 
-| Hành vi | `actionKey` gửi lên |
-|---|---|
-| người dùng click vào một brand trên ứng dụng đối tác | `brand` |
+Chúng tôi không công bố một danh sách cố định toàn cục ở đây — chuỗi cụ thể phụ thuộc tích hợp của bạn
+đang cấu hình cho hành vi nào, và tập đó đổi mỗi khi một chiến dịch được cấu hình. Đọc tập mã hiện tại
+cho chính chiến dịch của bạn ở màn chiến dịch trên console, hoặc hỏi đầu mối onboarding. Đừng chép lại một `actionKey`
+thấy ở một tích hợp hay một chiến dịch khác — nó có thể không còn là giá trị chiến dịch đó đang chờ.
 
-⚠️ **Phân biệt hoa/thường, so chuỗi thô.** `brand` ≠ `Brand` ≠ `BRAND`. Sai hoa
+⚠️ **Phân biệt hoa/thường, so chuỗi thô.** Sai hoa
 thường thì sự kiện **vẫn được nhận, vẫn trả `200`**, nhưng quyền lợi gắn với hành vi đó **không bao giờ
 được tính** — và không có lỗi nào bật lên để bạn biết.
 
@@ -396,22 +416,35 @@ khoản thưởng, nên xê dịch nó là đổi luôn giá trị của sự ki
 của chúng ta. Gửi đúng mốc thật. Nếu độ trễ thật của bạn quá hạn, thì cái phải xê dịch là **cái hạn** —
 báo chúng tôi.
 
-## 6. `eventId` và `deliveryId` — đừng nhầm lẫn
+## 6. `eventId`, `deliveryId`, `batchId` — ba định danh, ba cấp
+
+```text
+eventId     = một sự việc nghiệp vụ                  · BẠN phát   · dùng để CHỐNG TRÙNG
+deliveryId  = biên nhận của chúng tôi cho MỘT sự kiện · CHÚNG TÔI phát · dùng để TRUY VẾT
+batchId     = MỘT lượt gọi HTTP (chỉ tuyến lô)        · CHÚNG TÔI phát · dùng để TƯƠNG QUAN (không lưu)
+```
 
 > **`eventId` định danh sự việc kinh doanh.** Bạn sinh ra nó. PHẢI KHÔNG đổi qua các lượt gửi lại của
 > cùng một sự việc thật.
 >
-> **`deliveryId` định danh một lượt giao.** Chúng tôi sinh ra nó. Mỗi lượt gửi lại CÓ THỂ nhận một
-> giá trị mới.
+> **`deliveryId` định danh biên nhận của chúng tôi cho một sự kiện.** Chúng tôi sinh ra nó. Mỗi lượt gửi
+> lại CÓ THỂ nhận một giá trị mới.
+>
+> **`batchId` định danh một lượt gọi tuyến lô.** Chúng tôi sinh ra và trả trong chính response đó để hai bên
+> cùng chỉ được vào một lượt gọi khi đọc log. Nó **không được lưu**, **không bao giờ** là khoá chống trùng, và
+> bạn **không được gửi** nó — thân request có `batchId` bị từ chối `400`.
+
+Một lượt gọi `POST /integrations/events` mang một sự kiện nên ra một `deliveryId`. Một lượt gọi tuyến lô mang N
+sự kiện nên ra N `deliveryId` (mỗi sự kiện một) cộng một `batchId`.
 
 ```text
 eventId = evt-123
-   ├── lượt giao #1   deliveryId = del-001   →  deduplicated: false
-   └── lượt giao #2   deliveryId = del-002   →  deduplicated: true
+   ├── biên nhận #1   deliveryId = del-001   →  deduplicated: false
+   └── biên nhận #2   deliveryId = del-002   →  deduplicated: true
 ```
 
 ⭐ **Ghi lại `deliveryId` ở phía bạn.** Khi có sự cố, đó là thuật ngữ duy nhất hai bên cùng dùng được để
-gọi tên đúng một lượt giao — thay vì mô tả "cái lượt lúc 9 giờ sáng".
+gọi tên đúng một biên nhận — thay vì mô tả "cái lượt lúc 9 giờ sáng".
 
 ⚠️ **`deliveryId` CÓ THỂ vắng mặt** trong response. Nghĩa là kho trace của chúng tôi không ghi được cho
 lượt đó — sự kiện của bạn vẫn được nhận và lưu bền như thường. Vắng mặt không phải lỗi; đừng gửi lại vì
@@ -489,8 +522,11 @@ Gửi cùng `eventId` với **`type` khác** là một trường hợp khác —
 | `401` | Sai khoá, sai chữ ký, hoặc timestamp hết hạn — một thông báo chung cho cả ba | ✗ | kiểm credential/đồng hồ rồi gửi lại |
 | `404` | Route không tồn tại | ✗ | sửa URL |
 | `422` | Đúng khuôn, sai nghĩa **nghiệp vụ** — xem [error-codes.md](./error-codes.md) | CÓ THỂ có mặt (trong `details`) | **đừng gửi lại mù** — đọc trường `code` |
+| `413` | Thân request vượt trần **100 KB** — xem [§10b](#10b-trần-kích-thước-thân-request) | ✗ | **đừng gửi lại nguyên gói** — chia nhỏ hoặc rút gọn `payload` |
 | `429` | Vượt giới hạn tần suất | — | đọc `Retry-After`, chờ rồi gửi lại |
 | `5xx` | Lỗi nền tảng | — | gửi lại có backoff |
+
+> Tuyến lô có hợp đồng riêng — gồm những lỗi nào từ chối cả lô — ở [§14](#14-gửi-theo-lô).
 
 **`200` không hứa quyền lợi đã được cấp** — xem §5.1 và [README.md § Thứ tự bắt buộc](./README.md) để
 biết ba lý do một sự kiện được chấp nhận vẫn có thể sinh ra quyền lợi bằng không.
@@ -516,7 +552,7 @@ eventId → PHẢI giữ nguyên
 payload → PHẢI giữ nguyên về mặt ngữ nghĩa
 ```
 
-**Cái gì đổi qua các lượt gửi lại?** `deliveryId` — chúng tôi cấp một giá trị mới cho mỗi lượt giao
+**Cái gì đổi qua các lượt gửi lại?** `deliveryId` — chúng tôi cấp một giá trị mới cho mỗi biên nhận
 (§6).
 
 ## 10. Giới hạn tần suất
@@ -533,6 +569,22 @@ Giới hạn: 600 request/phút cho mỗi Access Key.
 Nếu các header này vắng mặt trong response: coi như **không có thông tin giới hạn tần suất** cho
 request đó — đừng suy ra là bạn có hạn mức vô hạn.
 
+## 10b. Trần kích thước thân request
+
+Thân một request ở tuyến một-sự-kiện (`POST /integrations/events`) tối đa **100 KB** *(102 400 byte; nếu gói được nén gzip thì đo sau khi giải nén)*. Vượt trần,
+cửa trả `413` với thân **JSON** cùng khuôn mọi lỗi khác — không phải trang HTML:
+
+```json
+{ "code": "payload_too_large", "title": "payload_too_large", "status": 413,
+  "detail": "Thân request vượt trần cho phép.", "details": { "maxBytes": 102400 } }
+```
+
+`413` là lỗi phía **gói tin**, không phải lỗi tạm thời: gửi lại y nguyên sẽ nhận lại `413`. Một sự kiện thông
+thường nhỏ hơn trần này nhiều lần; nếu `payload` của bạn chạm trần, hãy liên hệ để trao đổi thay vì tách tuỳ tiện.
+Thân JSON hỏng trả `400` với `code: "invalid_json"` (cũng là JSON, không kèm nội dung thân bạn gửi).
+
+Tuyến lô có trần lớn hơn, cấu hình được — xem [§14.5](#145-ba-lớp-trần).
+
 ## 11. Phục hồi (recovery)
 
 Phục hồi (đối soát, backfill, replay) là năng lực **tuỳ chọn**, mô tả đầy đủ ở
@@ -543,7 +595,10 @@ Phục hồi (đối soát, backfill, replay) là năng lực **tuỳ chọn**, 
 | Từ | Nghĩa trong tài liệu này |
 |---|---|
 | **event (sự kiện)** | một việc đã xảy ra trong hệ thống của bạn — đơn hoàn tất, đơn huỷ. Một sự kiện = một `eventId` |
-| **delivery (lượt giao)** | một lượt gọi HTTP mang một sự kiện sang chúng tôi. Một sự kiện CÓ THỂ có nhiều lượt giao |
+| **delivery (lượt giao)** | biên nhận của chúng tôi cho MỘT sự kiện (mang một `deliveryId`). Lượt gọi một-sự-kiện ra một biên nhận; lượt gọi lô ra một biên nhận cho mỗi sự kiện. Một sự kiện CÓ THỂ có nhiều lượt giao |
+| **batch (lô)** | một lượt gọi HTTP tới tuyến lô mang N sự kiện. Chỉ là tiện ích vận chuyển — không phải đối tượng nghiệp vụ, không lưu, không có chống trùng riêng |
+| **ingest disposition (kết cục nhận)** | câu trả lời của cửa cho một sự kiện: `accepted` · `deduplicated` · `rejected`. Tập đóng |
+| **economic outcome (kết cục kinh tế)** | chuyện xảy ra với sự kiện *sau khi* được nhận (đánh giá, cấp quyền lợi). Cửa nhận không nói gì về nó |
 | **envelope (phong bì)** | hình dạng JSON bên ngoài (`eventId`, `type`, `occurredAt`, …), phân biệt với `payload` |
 | **deduplication (chống trùng)** | bảo đảm một `eventId` cho trước chỉ được tính đúng một lần, dù bao nhiêu lượt giao mang nó |
 | **freshness (độ tươi)** | phép kiểm timestamp ±5 phút từ chối các request bị phát lại |
@@ -582,6 +637,158 @@ Không có định dạng bắt buộc. Một UUID là đủ. Nó chỉ cần **
 Không khuyến khích, và riêng kênh **recovery** thì **không được phép** — mỗi máy chủ là một tích hợp
 riêng với khoá riêng. Dùng chung nghĩa là một request ký cho máy này verify được ở máy kia.
 
+**`accepted` trong lô có nghĩa là đã cấp quyền lợi không?**
+Không. `accepted` ≠ đã đánh giá ≠ đã cấp quyền lợi. Xem §14.3.
+
 **Có giới hạn kích thước payload không?**
 Trường thừa được lưu nguyên văn và không gây vấn đề gì, nhưng đừng nhét cả một bản ghi nghiệp vụ vào
 `payload`. Báo chúng tôi trước nếu bạn cần gửi một khối dữ liệu lớn.
+
+## 14. Gửi theo lô
+
+`POST /api/v1/integrations/events/batch` mang **N sự kiện trong một lượt gọi** và trả lời **theo từng sự kiện**. Đây là
+tiện ích vận chuyển cho đối tác có đợt sự kiện dồn. Không gì về từng sự kiện thay đổi: cùng envelope (§5), cùng chống
+trùng theo `eventId` (§7), cùng chữ ký (§3), cùng luật `payload`.
+
+> ⚠️ Tuyến lô **mặc định TẮT** theo từng tích hợp. Hãy nhờ chúng tôi bật cho khoá của bạn; cùng lúc đó chúng tôi báo các
+> trần (§14.5) áp cho bạn. Khi còn tắt, tuyến trả `422` với `code: "batch_not_enabled"` và không xử lý gì.
+
+### 14.1 Request
+
+Cùng header như §3. Chữ ký phủ **byte thô của toàn bộ thân**, đúng như §3.1.
+
+```json
+{ "events": [
+  { "eventId": "evt-1", "type": "ORDER_COMPLETED", "occurredAt": "2026-09-19T08:00:00Z", "…": "…" },
+  { "eventId": "evt-2", "type": "ORDER_COMPLETED", "occurredAt": "2026-09-19T08:00:05Z", "…": "…" }
+] }
+```
+
+`events` là bắt buộc và không được rỗng. **Mọi khoá cấp cao khác bị từ chối `400`** (kể cả `batchId`). Mỗi phần tử là một
+envelope sự kiện đầy đủ, y hệt tuyến một-sự-kiện.
+
+### 14.2 Response — `200` kể cả khi có sự kiện hỏng
+
+```json
+{
+  "batchId": "bat_9c1f…",
+  "errors": true,
+  "accepted": 1, "deduplicated": 1, "failed": 1,
+  "results": [
+    { "eventId": "evt-1", "status": "accepted",     "deliveryId": "del-001" },
+    { "eventId": "evt-2", "status": "deduplicated", "deliveryId": "del-002" },
+    { "eventId": "evt-3", "status": "rejected", "code": "event_type_not_registered", "retryable": false, "detail": "…" }
+  ]
+}
+```
+
+Tương ứng — bạn dựa được vào cả ba dòng, luôn luôn, mỗi khi lượt gọi tới bước xử lý (`200`):
+
+```text
+results.length      === events.length
+results[i].eventId  === events[i].eventId      (null nếu phần tử đó không có eventId dùng được)
+accepted + deduplicated + failed === events.length
+```
+
+Mỗi kết quả có một `status`:
+
+| `status` | Nghĩa | Kèm | Bạn làm gì |
+|---|---|---|---|
+| `accepted` | đã nhận và lưu bền | `deliveryId` | không làm gì — dừng gửi lại sự kiện đó |
+| `deduplicated` | chúng tôi đã có `eventId` này | `deliveryId` | không làm gì — chỉ được tính một lần |
+| `rejected` | sự kiện này không được nhận | `code`, `retryable`, `detail` | `retryable: true` thì gửi lại **riêng sự kiện này** sau; `false` thì sửa trước |
+
+`retryable` suy ra từ lỗi: `false` cho lỗi khuôn/nghĩa, gồm `validation_error`, `event_type_not_registered`,
+`unknown_event_type`, `payload_field_missing`, `derived_event_not_accepted`, `event_id_conflict`, `invalid_occurred_at`,
+`event_too_late`, `event_from_future` — xem [error-codes.md](./error-codes.md); `true` cho `internal_error`, là lỗi phía
+nền tảng ở đúng sự kiện đó. Các sự kiện được xử lý **lần lượt từng cái**; một sự kiện hỏng không chặn các sự kiện khác.
+
+**Gửi lại cả lô là an toàn.** Lô mới nhận `batchId` **mới**, và mọi sự kiện chúng tôi đã có trả về `deduplicated`. Không có
+khái niệm "lô này đã xử lý rồi" — chống trùng làm theo từng `eventId` (§7). Trùng ngay trong một lô cũng hợp lệ:
+`[E1, E2, E1]` trả `accepted · accepted · deduplicated`.
+
+### 14.3 `accepted` không có nghĩa là đã cấp quyền lợi
+
+```text
+accepted  ≠  đã đánh giá  ≠  đã cấp quyền lợi
+```
+
+`accepted` chỉ nói: *"sự kiện này đã được ghi nhận."* Nó **không** nói sự kiện đã được
+đánh giá với chiến dịch, và **không** nói quyền lợi đã được cấp (các lý do ở §13 và README vẫn áp dụng). Một `200` cho 500
+sự kiện không phải bảo đảm hàng loạt 500 quyền lợi — nó là 500 biên nhận. Đừng hứa quyền lợi với người dùng của bạn chỉ vì
+`accepted`.
+
+### 14.4 Thứ tự mảng không phải thứ tự thời gian
+
+```text
+✅ CÓ bảo đảm:     results[i] ↔ events[i]
+🔴 KHÔNG bảo đảm:  events[0] xảy ra TRƯỚC events[1]
+```
+
+Thứ tự mảng chỉ cho bạn biết kết quả nào thuộc sự kiện nào. **Việc gì xảy ra lúc nào do `occurredAt` quyết định** (và
+`supersedes` nếu bạn dùng), không bao giờ do vị trí. Gửi `[E2, E1]` cho cùng kết quả như `[E1, E2]`.
+
+Hai từ vựng được tách riêng: **kết cục nhận** (`accepted` / `deduplicated` / `rejected`) là điều cửa nhận trả lời, và là tập
+đóng. **Kết cục kinh tế** xảy ra ở phía sau, và cửa nhận không nói gì về nó.
+
+### 14.5 Ba lớp trần
+
+Ba trần độc lập bảo vệ cửa nhận. Chúng được kiểm **sau** xác thực và **trước** khi xử lý sự kiện đầu tiên. Vượt **bất kỳ**
+trần nào thì **cả lô bị từ chối**: không sự kiện nào được xử lý, response **không có `results`**, và không trừ gì khỏi hạn
+mức tần suất của bạn.
+
+| # | Trần | Vượt thì | Ghi chú |
+|:-:|---|---|---|
+| ① | kích thước request (byte) | `413`, `code: "payload_too_large"`, `details.maxBytes` | mặc định **5 MiB**; chúng tôi có thể đặt giá trị khác cho khoá của bạn; không bao giờ quá **10 MiB**. ⚠️ Trần cứng 10 MiB được áp lúc đọc thân — **trước** xác thực, khác với ② và ③ |
+| ② | số sự kiện mỗi lô | `413`, `code: "batch_too_large"`, `details.maxEventsPerBatch` | mặc định **500**; `0` nghĩa là không cho gửi lô |
+| ③ | số sự kiện mỗi phút | `429`, `code: "rate_limit_exceeded"`, `Retry-After` | đếm **theo sự kiện**, không theo lượt gọi |
+
+**③ đếm theo sự kiện.** Lô N sự kiện dùng N đơn vị của cùng hạn mức mỗi phút như tuyến một-sự-kiện (§10) — một bộ đếm
+chung cho mỗi Access Key, dù bạn đi tuyến nào. `RateLimit-Remaining` cho biết bạn còn gửi được bao nhiêu sự kiện trong cửa
+sổ hiện tại; nếu nhỏ hơn lô của bạn, hãy gửi lô nhỏ hơn hoặc chờ `RateLimit-Reset`. ⚠️ Lô lớn hơn **cả** hạn mức mỗi phút
+của bạn thì không bao giờ được nhận — hãy chia nhỏ. Hãy hỏi chúng tôi hạn mức của bạn khi tuyến lô được bật.
+
+Lỗi cấp lô (không có `results`): `400` thân sai khuôn · `401` sai khoá/chữ ký/timestamp · `413` (①, ②) ·
+`422 batch_not_enabled` · `429` (③) · `5xx` lỗi nền tảng (gửi lại cả lô có backoff; an toàn, theo §14.2).
+
+## 15. Đọc kết quả sau `200`
+
+Với một số loại sự kiện, `200` mới chỉ là nửa đầu câu chuyện: chúng tôi **lưu** sự kiện ngay và **xử lý** nó ít lâu sau. Nếu xử lý
+hỏng vì một lý do nghiệp vụ, cái `200` bạn đã nhận không đổi. Bạn biết kết quả bằng cách hỏi.
+
+`POST /api/v1/integrations/deliveries` là cửa tra. Ký đúng như cửa gửi sự kiện (§3), và gửi **đúng một** trong hai khoá:
+
+```jsonc
+{ "deliveryId": "5b0e…" }      // giá trị chúng tôi trả ở lượt 200
+{ "externalId": "evt-123" }    // eventId của bạn; có thể khớp nhiều lượt giao
+```
+
+```jsonc
+// theo deliveryId
+{ "delivery": {
+    "deliveryId": "5b0e…", "externalId": "evt-123", "eventSource": "…",
+    "outcome": "ACCEPTED",                       // CỬA đã quyết gì: ACCEPTED | DEDUPLICATED | REJECTED_SEMANTIC | REJECTED_STALE
+    "receivedAt": "2026-10-04T10:00:00.000Z",
+    "processing": [                              // điều xảy ra SAU lượt 200
+      { "consumer": "reward-payout", "status": "FAILED",
+        "errorCode": "settlement_item_not_found", "updatedAt": "2026-10-04T10:00:05.000Z" }
+    ] } }
+// theo externalId: { "deliveries": [ { …cùng hình dạng… } ] }   (tối đa 50, mới nhất trước)
+```
+
+| `processing[].status` | Nghĩa | Bạn làm gì |
+|---|---|---|
+| `PENDING` | chưa xử lý | đợi; hỏi lại sau vài giây |
+| `SUCCEEDED` | đã xử lý | không làm gì |
+| `FAILED` | hỏng, và chúng tôi tự thử lại vài lần | đọc `errorCode` |
+| `DEAD` | hỏng và chúng tôi đã ngừng thử lại | đọc `errorCode`; liên hệ chúng tôi nếu là mã bạn không tự sửa được |
+
+- **Hôm nay chỉ `POINT_REDEEMED` có danh sách `processing`** (một phần tử, `consumer: "reward-payout"`). Với mọi loại sự kiện khác, và với lượt
+  giao bị cửa từ chối, `processing` là danh sách rỗng: không hứa gì ở đó.
+- **`errorCode` là một mã, không bao giờ là một câu.** Nó là `null` trừ khi trạng thái là `FAILED` hoặc `DEAD`. Các mã nằm ở
+  [error-codes.md](./error-codes.md#mã-xử-lý-bất-đồng-bộ--processingerrorcode); lỗi nào chúng tôi chưa công bố mã thì báo là `processing_error`.
+- **Bạn chỉ thấy lượt giao của chính mình.** Lượt giao của người khác trả lời y hệt lượt không tồn tại: `{ "delivery": null }`.
+- **Gửi lại cùng `eventId` không chạy lại việc.** Sau khi sửa nguyên nhân, gửi sự kiện với `eventId` **mới**; giữ nguyên `redemptionRef` cho cùng một khoản trả
+  để nó chỉ được ghi đúng một lần.
+- Danh sách rỗng khi tra theo `externalId` nghĩa là "chúng tôi không giữ lượt giao nào mang mã đó", không phải "bạn chưa từng gửi".
+

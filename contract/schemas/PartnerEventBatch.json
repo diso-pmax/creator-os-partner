@@ -1,0 +1,22 @@
+{
+  "type": "object",
+  "properties": {
+    "events": {
+      "type": "array",
+      "items": {
+        "$ref": "#/components/schemas/PartnerEvent"
+      },
+      "minItems": 1
+    }
+  },
+  "required": [
+    "events"
+  ],
+  "additionalProperties": false,
+  "title": "PartnerEventBatch",
+  "description": "Body of POST /integrations/events/batch.",
+  "x-serverSideChecks": [
+    "each element of events is validated as PartnerEvent on its own, and answered per element",
+    "the batch size and byte limits are per integration (422 batch_not_enabled, 413 batch_too_large, 413 payload_too_large)"
+  ]
+}

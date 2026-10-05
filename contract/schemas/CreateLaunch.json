@@ -1,0 +1,29 @@
+{
+  "type": "object",
+  "properties": {
+    "externalUserId": {
+      "type": "string",
+      "minLength": 1
+    },
+    "displayName": {
+      "anyOf": [
+        {
+          "type": "string",
+          "maxLength": 256
+        },
+        {
+          "type": "null"
+        }
+      ]
+    }
+  },
+  "required": [
+    "externalUserId"
+  ],
+  "additionalProperties": false,
+  "title": "CreateLaunch",
+  "description": "Body of POST /campaigns/{campaignId}/launch. campaignId is in the path, never in the body.",
+  "x-serverSideChecks": [
+    "displayName is only a SUGGESTION: a value that fails the naming policy is dropped, the launch still succeeds"
+  ]
+}

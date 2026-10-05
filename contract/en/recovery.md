@@ -200,7 +200,7 @@ signature      = "sha256=" + lowercase_hex( HMAC-SHA256( RECOVERY_SECRET, signin
 
 | Header | Carries |
 |---|---|
-| `X-Platform-Key-Id` | which of our keys signed this — **use it to look up the right secret**, and it is what makes key rotation possible without downtime |
+| `X-Platform-Key-Id` | the key identifier. It is the **same value for every version** of the key, so it does **not** tell you which secret signed: try the secrets you have, newest first (see *Key rotation* below) |
 | `X-Platform-Timestamp` | Unix seconds |
 | `X-Platform-Signature` | `sha256=<lowercase hex>` |
 
@@ -219,28 +219,26 @@ reuse the exact HMAC-SHA256 code you wrote for the other direction, just change 
 ```js
 const crypto = require('node:crypto');
 
-function verifyPlatformSignature(req, secretsByKeyId) {
-  const keyId = req.header('X-Platform-Key-Id');
+function verifyPlatformSignature(req, platformSecrets) {
+  // platformSecrets: every secret you have for this channel, newest first. `X-Platform-Key-Id` is the same for every version, so it cannot pick one
   const ts    = Number(req.header('X-Platform-Timestamp'));
   const given = req.header('X-Platform-Signature') || '';
 
   // 1. ±5-minute freshness, rejects both directions
   if (!Number.isFinite(ts) || Math.abs(Date.now() - ts * 1000) > 5 * 60_000) return false;
 
-  // 2. Secret looked up by keyId — lets BOTH secrets stay valid during rotation (§5)
-  const secret = secretsByKeyId[keyId];
-  if (!secret) return false;
-
-  // 3. req.originalUrl = path + query EXACTLY as received. req.rawBody = raw bytes, pre-JSON-parse
+  // 2. req.originalUrl = path + query EXACTLY as received. req.rawBody = raw bytes, pre-JSON-parse
   const base = Buffer.concat([
     Buffer.from(`${ts}.${req.method.toUpperCase()}.${req.originalUrl}.`, 'utf8'),
     req.rawBody ?? Buffer.alloc(0),
   ]);
-  const expected = 'sha256=' + crypto.createHmac('sha256', secret).update(base).digest('hex');
 
-  // 4. Constant-time comparison — do NOT use ===
-  const a = Buffer.from(expected), b = Buffer.from(given);
-  return a.length === b.length && crypto.timingSafeEqual(a, b);
+  // 3. Try each secret in turn; constant-time comparison — do NOT use ===
+  const b = Buffer.from(given);
+  return platformSecrets.some((secret) => {
+    const a = Buffer.from('sha256=' + crypto.createHmac('sha256', secret).update(base).digest('hex'));
+    return a.length === b.length && crypto.timingSafeEqual(a, b);
+  });
 }
 ```
 
@@ -264,9 +262,17 @@ rejects both directions.
 same reason as [README.md](./README.md): different people touch it, different rotation cadence. Reusing
 the EVENT key here means one leak compromises **both** directions at once.
 
-**Key rotation does not interrupt this endpoint** ([testing.md § Key rotation](./testing.md#3-key-rotation)): there is a
-window where **two** secrets are simultaneously valid. Check `X-Platform-Key-Id` to know which one we
-signed with, and keep both accepted until we tell you the old one is revoked.
+**Key rotation** ([testing.md § Key rotation](./testing.md#3-key-rotation)). The RECOVERY key is derived
+([credential-derivation.md](./credential-derivation.md)). `X-Platform-Key-Id` **does not change** when we rotate, and
+the moment a rotation completes **we sign with the new key**. So:
+
+1. Agree the date with our operations team. The new version is always the current one plus one, so you can derive it
+   and load it **before** the rotation completes.
+2. Accept **both** secrets and try them in turn, newest first, until one verifies.
+3. Drop the old one only after we tell you it is revoked.
+
+If the new key is not loaded in time, our calls fail with `401` for a short while. That is a failed call on our side,
+not lost data: it can be sent again.
 
 ### 4.1 🔒 Two limits of this scheme — stated so you do not rely on what it does not promise
 
