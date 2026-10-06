@@ -37,6 +37,32 @@ có gì thì ghi *"không"*, đừng bỏ trống:
 
 Không đổi.
 
+## v1.2.0-rc.2 — 2026-10-06
+
+Nâng từ v1.2.0-rc.1. Không có biến môi trường mới, không có migration mới, không đổi `reward-only.env.example`.
+
+**Biến môi trường**
+
+- 🔴 `PLATFORM_BASE_DOMAINS` (tên miền gốc của nền tảng) — **không thêm mới, nhưng nay là điều kiện của một lớp chặn.** Bản này không cho đơn vị nào
+  thêm làm tên miền riêng một tên bằng hoặc nằm dưới tên miền gốc, và khi gỡ một tên miền thì biến này quyết có xếp việc xoá chứng chỉ hay không.
+  Cả hai chỉ đúng khi biến **được đặt và đúng khuôn**: danh sách **tên máy chủ trần**, cách nhau bằng dấu phẩy, ví dụ `portal.example.com`.
+  **Không** `https://`, **không** dấu chấm ở đầu hoặc cuối, **không** `*.`, **không** `:cổng`, không khoảng trắng. Sai khuôn hoặc để trống thì lớp chặn tắt
+  mà không báo gì, và việc gỡ tên miền vẫn có thể xoá chứng chỉ wildcard. Giá trị phải là CHÍNH chuỗi đang chạy trong container `api`.
+
+**Việc phải làm tay**
+
+- 🔴 **Sau khi bản này đã chạy**, kiểm các tên miền riêng cũ nằm dưới tên miền gốc theo [upgrade.md, mục 6b](upgrade.md) (đoạn SQL đi kèm tài liệu, chạy bằng tài khoản có
+  `BYPASSRLS` **hoặc** siêu người dùng) và dọn các dòng nó báo. Trước bản này, hai cửa thêm tên miền tạo dòng đang hoạt động mà không cần chứng minh gì,
+  nên có thể một đơn vị đang giữ tên miền con của đơn vị khác (`HIJACK_TENANT_ROW_ON_OTHER_TENANT_SLUG`).
+- 🔴 **Chỉ dọn bằng chức năng "gỡ tên miền" SAU KHI bản này đã chạy.** Trên bản cũ, gỡ một dòng nằm dưới tên miền gốc sẽ xếp việc
+  xoá chứng chỉ và có thể xoá chứng chỉ wildcard của nền tảng. Từ bản này gỡ dòng dưới tên miền gốc không còn thu hồi chứng chỉ.
+- 🟡 Định bỏ một tên khỏi `PLATFORM_BASE_DOMAINS`: chạy lại mục 6b cho tên đó và dọn TRƯỚC khi bỏ.
+
+**Quay lui**
+
+- Được bằng image cũ (`v1.2.0-rc.1`): bản này không có migration. Quay lui là **mở lại** lỗ giành tên miền con, và sau khi quay lui **không dùng**
+  "gỡ tên miền" cho dòng nằm dưới tên miền gốc (bản cũ sẽ xếp việc xoá chứng chỉ).
+
 ## v1.2.0-rc.1 — 2026-10-06
 
 Nâng từ v1.0.6.

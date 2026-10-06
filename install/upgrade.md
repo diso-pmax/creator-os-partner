@@ -227,6 +227,105 @@ docker inspect --format '{{ index .Config.Labels "org.opencontainers.image.revis
 
 ---
 
+## 6b. Kiểm tên miền cũ nằm dưới tên miền gốc của nền tảng — làm SAU mục 6, khi bản có chặn giành tên miền con đã chạy
+
+Chỉ cần với bản nói rõ điều này ở [changelog.md](changelog.md). Trước bản đó, một đơn vị có thể đã thêm làm tên miền riêng một tên **bằng hoặc nằm dưới tên miền gốc của nền tảng** (ví dụ `ten-don-vi-khac.portal.example.com`) mà không cần chứng minh gì. Bản mới chặn việc thêm mới; các dòng đã có từ trước vẫn nằm trong cơ sở dữ liệu và phải được xem lại một lần.
+
+🔴 **Điều kiện:** biến `PLATFORM_BASE_DOMAINS` của container `api` phải đúng khuôn — danh sách **tên máy chủ trần**, cách nhau bằng dấu phẩy, ví dụ `portal.example.com`. **Không** có `https://`, **không** dấu chấm ở đầu hoặc cuối, **không** `*.`, **không** `:cổng`, không khoảng trắng. Sai khuôn thì lớp chặn tắt mà không báo gì. Đoạn kiểm dưới đây tự cắt dấu chấm đầu/cuối nên **chạy xong không báo lỗi không chứng minh biến đúng khuôn**: hãy sao đúng chuỗi từ môi trường của container `api` và đối chiếu từng ký tự với quy tắc trên.
+
+🔴 **Chạy bằng tài khoản BỎ QUA bảo mật theo hàng** — tài khoản có `BYPASSRLS` hoặc là siêu người dùng, cùng loại với tài khoản chạy migration (mục 4). Tài khoản thường thấy thiếu dòng, danh sách trông "sạch" mà không sạch; đoạn kiểm tự từ chối chạy nếu tài khoản không thuộc hai loại trên.
+
+Lưu đoạn sau thành file `kiem-ten-mien.sql`. Nó **không đổi dữ liệu nào** (chỉ tạo một khung nhìn tạm rồi huỷ giao dịch), nên phải chạy trên cơ sở dữ liệu **chính**: một bản sao chỉ đọc sẽ từ chối lệnh tạo khung nhìn tạm. Cần `psql` từ phiên bản 10 trở lên.
+
+```sql
+\set ON_ERROR_STOP on
+\if :{?bases}
+\else
+  DO $$BEGIN RAISE EXCEPTION 'Thieu -v bases=<PLATFORM_BASE_DOMAINS>'; END$$;
+\endif
+SELECT count(*) > 0 AS has_bases,
+       string_agg(lower(btrim(b, E' \t\r\n.')), ', ') AS bases_read,
+       coalesce(bool_or(lower(btrim(b, E' \t\r\n.')) !~ '^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$'), false) AS has_bad_base
+FROM unnest(string_to_array(:'bases', ',')) AS b WHERE btrim(b, E' \t\r\n.') <> '' \gset
+\if :has_bases
+  \echo 'bases read:' :bases_read
+\else
+  DO $$BEGIN RAISE EXCEPTION 'Khong doc duoc ten mien goc nao tu -v bases'; END$$;
+\endif
+\if :has_bad_base
+  DO $$BEGIN RAISE EXCEPTION 'Mot ten mien goc khong phai ten may chu hop le; chi dung dau phay de ngan cach'; END$$;
+\endif
+SELECT (rolsuper OR rolbypassrls) AS bypass FROM pg_roles WHERE rolname = current_user \gset
+\if :bypass
+\else
+  DO $$BEGIN RAISE EXCEPTION 'Tai khoan khong bo qua duoc bao mat theo hang: danh sach se thieu dong'; END$$;
+\endif
+BEGIN;
+CREATE TEMP VIEW kiem_ten_mien AS
+WITH bases AS (
+  SELECT DISTINCT lower(btrim(b, E' \t\r\n.')) AS base
+  FROM unnest(string_to_array(:'bases', ',')) AS b
+  WHERE btrim(b, E' \t\r\n.') <> ''
+),
+in_zone AS (
+  SELECT DISTINCT ON (d.id) d.id, d.hostname, d.tenant_id, d.scope, d.status, d.is_primary, d.created_at,
+         lower(rtrim(btrim(d.hostname), '.')) AS h, b.base
+  FROM creator_os.domains d
+  JOIN bases b
+    ON lower(rtrim(btrim(d.hostname), '.')) = b.base
+    OR right(lower(rtrim(btrim(d.hostname), '.')), length(b.base) + 1) = '.' || b.base
+  ORDER BY d.id, length(b.base) DESC
+),
+labelled AS (
+  SELECT z.*, CASE WHEN z.h = z.base THEN NULL ELSE left(z.h, length(z.h) - length(z.base) - 1) END AS label
+  FROM in_zone z
+)
+SELECT
+  CASE
+    WHEN l.scope = 'PLATFORM' AND owner.id IS NOT NULL THEN 'REVIEW_PLATFORM_ROW_ON_LIVE_SLUG'
+    WHEN l.scope = 'PLATFORM'                          THEN 'OK_PLATFORM_ROW'
+    WHEN l.label IS NULL                               THEN 'BAD_TENANT_ROW_ON_BASE'
+    WHEN owner.id IS NULL                              THEN 'BAD_TENANT_ROW_NO_LIVE_SLUG_OWNER'
+    WHEN owner.id <> l.tenant_id                       THEN 'HIJACK_TENANT_ROW_ON_OTHER_TENANT_SLUG'
+    ELSE                                                    'REDUNDANT_OWN_SLUG'
+  END AS verdict,
+  l.hostname, l.scope, l.status, l.is_primary, l.created_at,
+  l.tenant_id AS row_tenant_id, rt.slug AS row_tenant_slug,
+  owner.id AS slug_owner_id, owner.slug AS slug_owner_slug, l.id AS domain_id
+FROM labelled l
+LEFT JOIN creator_os.tenants rt    ON rt.id = l.tenant_id
+LEFT JOIN creator_os.tenants owner ON owner.slug = l.label AND owner.deleted_at IS NULL;
+
+SELECT verdict, count(*) AS n, count(*) FILTER (WHERE status = 'ACTIVE') AS active
+FROM kiem_ten_mien GROUP BY verdict ORDER BY verdict;
+SELECT * FROM kiem_ten_mien ORDER BY verdict, hostname;
+ROLLBACK;
+```
+
+Chạy (bỏ phần `?schema=…` khỏi địa chỉ kết nối, vì `psql` không nhận tham số đó):
+
+```bash
+psql "${DATABASE_URL_MIGRATE%%\?*}" -X -q -v bases='portal.example.com' -f kiem-ten-mien.sql
+```
+
+Thay `portal.example.com` bằng **đúng** giá trị `PLATFORM_BASE_DOMAINS` đang chạy.
+
+| `verdict` | Nghĩa | Việc làm |
+|---|---|---|
+| Không có dòng nào **và dòng `bases read:` ở đầu kết quả hiện đúng tên miền gốc của bạn** | không có tên miền riêng nào nằm dưới tên miền gốc | xong |
+| `HIJACK_TENANT_ROW_ON_OTHER_TENANT_SLUG` | **một đơn vị đang giữ tên miền con của đơn vị khác** | nặng nhất — gỡ dòng đó (xem *Ai gỡ, ở đâu* dưới), rồi báo đơn vị bị ảnh hưởng nếu cần |
+| `BAD_TENANT_ROW_ON_BASE` · `BAD_TENANT_ROW_NO_LIVE_SLUG_OWNER` | một đơn vị giữ chính tên miền gốc, một tên được dành riêng hoặc một tên chưa đơn vị nào dùng | gỡ |
+| `REVIEW_PLATFORM_ROW_ON_LIVE_SLUG` | dòng do nền tảng tạo, nằm trên tên miền con của một đơn vị đang hoạt động | xem lại từng dòng |
+| `REDUNDANT_OWN_SLUG` · `OK_PLATFORM_ROW` | vô hại | để nguyên |
+
+**Ai gỡ, ở đâu.** Dòng của đơn vị khác thì đơn vị đó không tự gỡ giúp bạn được: người **quản trị nền tảng** gỡ. Trong Console, vào chế độ nền tảng, nhóm **Đơn vị**, mở đơn vị có tên ở cột `row_tenant_slug`, chọn thẻ **Tên miền**, bấm **Gỡ** ở dòng có đúng tên máy chủ trong cột `hostname`, rồi xác nhận **Gỡ tên miền?**.
+
+🔴 **Chỉ gỡ bằng chức năng "gỡ tên miền" SAU KHI bản có chặn đã chạy.** Trên bản cũ, gỡ một dòng nằm dưới tên miền gốc sẽ xếp việc xoá chứng chỉ và có thể xoá chứng chỉ wildcard của nền tảng.
+
+⚠️ Định bỏ một tên khỏi `PLATFORM_BASE_DOMAINS`: chạy lại đoạn kiểm cho tên đó và dọn **trước** khi bỏ. Bỏ rồi thì các dòng còn sót quay lại chỗ quyết định tên máy chủ bằng khớp đúng tên.
+
+---
+
 ## 7. Quay lui được không?
 
 **Được — về đúng MỘT bản trước, bằng image cũ, không động vào cơ sở dữ liệu.** Diso viết migration theo
