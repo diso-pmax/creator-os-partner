@@ -37,6 +37,10 @@ có gì thì ghi *"không"*, đừng bỏ trống:
 
 Không đổi.
 
+## v1.2.0-rc.5 — 2026-10-07
+
+Không đổi.
+
 ## v1.2.0-rc.4 — 2026-10-07
 
 Không đổi.
