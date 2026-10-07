@@ -50,7 +50,8 @@ Màn chỉ hiện **Sẵn sàng gửi điểm** khi đủ cả bốn điều ki�
 
 ```jsonc
 {
-  "settlementRef":        "…",     // mã đợt (campaign · kỳ · mệnh giá)
+  "settlementRef":        "…",     // mã đợt — MỐC CUỐI KỲ đã chốt, dạng ISO 8601 UTC (ví dụ "2026-09-30T16:59:59.999Z"); KHÔNG phải mã ghi rõ chiến dịch hay mệnh giá
+  "campaignId":           "…",     // chiến dịch mà đợt này tất toán — xem bên dưới
   "settlementItemId":     "…",     // mã dòng — gửi lại NGUYÊN VĂN trong sự kiện POINT_REDEEMED của bạn (§5)
   "partyId":              "…",     // người nhận, mã NỘI BỘ của chúng tôi
   "externalUserId":       "…",     // người nhận, mã CỦA BẠN cho người dùng này — chính giá trị bạn đã gửi lúc launch / ở sự kiện
@@ -66,6 +67,15 @@ Màn chỉ hiện **Sẵn sàng gửi điểm** khi đủ cả bốn điều ki�
 - **`externalUserId` là trường để bạn cộng điểm theo.** Đó là mã **bạn** đã đưa chúng tôi cho người dùng
   này. Chúng tôi không bao giờ gửi gói thiếu nó: khi không đọc được chính xác cho một dòng (không có,
   hoặc có nhiều hơn một), thao tác **Gửi** bị từ chối ở phía chúng tôi và không có gì tới chỗ bạn.
+- **`campaignId` cho bạn biết khoản tiền thuộc chiến dịch nào.** Một đợt chỉ tất toán đúng một chiến dịch,
+  nên mọi dòng của một đợt mang cùng `campaignId`: mã của chiến dịch đó phía chúng tôi (cùng mã bạn dùng
+  trong đường dẫn launch, `POST /campaigns/:campaignId/launch`). Chúng tôi gửi nó ở mọi gói. Trong schema
+  công bố nó không nằm trong `required`, và schema là schema MỞ (`additionalProperties: true`), đúng như
+  gạch đầu dòng cuối của danh sách này: bỏ qua trường bạn không nhận ra. Trước bản phát hành thêm
+  `campaignId`, schema công bố là schema ĐÓNG, nên bộ kiểm dựng từ một BẢN SAO schema cũ đó sẽ từ chối
+  gói của chúng tôi: hãy cập nhật bản sao `SettlementPacket.json` (hoặc bỏ qua trường lạ) trước khi bản
+  phát hành này tới bạn. Hai chiến dịch tất toán cùng một kỳ có cùng `settlementRef` nhưng khác `campaignId`:
+  **đừng bao giờ lấy riêng `settlementRef` làm khoá**.
 - `partyId` là mã nội bộ của chúng tôi — giữ cho nhật ký; đừng tra người dùng theo nó.
 - **Thứ bạn nhận là điểm.** `exchangeRateSnapshot` / `moneyAmount` / `moneyCurrency` chỉ **để tham khảo**;
   chúng tôi không quy đổi hộ bạn và bạn không phải trả bằng tiền. Bạn làm gì với điểm là việc của bạn.

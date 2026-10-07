@@ -37,6 +37,10 @@ có gì thì ghi *"không"*, đừng bỏ trống:
 
 Không đổi.
 
+## v1.2.0-rc.3 — 2026-10-07
+
+Không đổi.
+
 ## v1.2.0-rc.2 — 2026-10-06
 
 Nâng từ v1.2.0-rc.1. Không có biến môi trường mới, không có migration mới, không đổi `reward-only.env.example`.

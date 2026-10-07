@@ -25,6 +25,21 @@ tìm ra.
 
 Không đổi.
 
+## v1.2.0-rc.3 — 2026-10-07
+
+🟢 **Mới: gói tất toán mang `campaignId`.** Mỗi thông báo tất toán nay kèm mã chiến dịch mà đợt của nó tất toán, ngay
+sau `settlementRef`. Trường này nằm trong thân được ký như mọi trường khác. Schema công bố (`SettlementPacket.json`,
+`openapi.yaml`) không xếp nó vào `required`, và từ bản phát hành này schema là schema **MỞ** (`additionalProperties: true`),
+đúng điều [settlement.md §2.1](./settlement.md#21-thân-request) luôn dặn bạn giả định: bỏ qua trường bạn không nhận ra,
+để trường chúng tôi thêm sau này không làm bạn vỡ.
+🟡 **Việc cho bên nhận kiểm chặt:** trước bản này schema công bố là schema ĐÓNG (`additionalProperties: false`). Nếu bạn
+dựng bộ kiểm từ một BẢN SAO schema cũ đó, nó sẽ từ chối trường mới: hãy cập nhật bản sao `SettlementPacket.json`
+(hoặc bỏ qua trường lạ) TRƯỚC khi bản này tới bạn. Chúng tôi gửi `campaignId` ở mọi gói. Chi tiết: [settlement.md §2.1](./settlement.md#21-thân-request).
+
+🟡 **Sửa: `settlementRef` là gì.** Tài liệu từng ghi nó thể hiện "chiến dịch, kỳ, mệnh giá". Thực tế chưa bao giờ như
+vậy: nó là **mốc cuối kỳ đã chốt** dạng ISO 8601 UTC. Hai chiến dịch tất toán cùng một kỳ vì thế có cùng
+`settlementRef`; hãy dùng `campaignId` (và `denominationCode`) để phân biệt. Hành vi không đổi, chỉ sửa chữ.
+
 ## v1.2.0-rc.1 — 2026-10-06
 
 🟢 **Mới: tự gửi thử một thông báo tất toán (chỉ ở sân sandbox).** `POST /api/v1/integrations/settlement/test`, ký như một sự

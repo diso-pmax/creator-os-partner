@@ -350,7 +350,7 @@ printf '%s.%s' 1786701000 '{"externalUserId":"ext-user-000001"}' \
 printf 'evt-1\nevt-2\nevt-3' | openssl dgst -sha256 -r | cut -d' ' -f1
 
 # SETTLEMENT channel (§2.6) — method and path are signed too
-printf '%s.POST.%s.%s' 1786698753 '/hooks/settlement?src=bank-a' '{"settlementRef":"SR-2026-09-camp-01","settlementItemId":"5b0d8e7a-3c41-4f6a-9b52-7a1e0c9d2f64","partyId":"0b8a6f2e-1d34-4c57-8e90-a3b5c7d9e1f2","externalUserId":"12345","denominationCode":"PTS","pointAmount":"100","exchangeRateSnapshot":"10","moneyAmount":"1000","moneyCurrency":"VND","deliveryNonce":"9c1f4a7e-52b8-4d03-a6e9-0f3b8d2c7a15"}' \
+printf '%s.POST.%s.%s' 1786698753 '/hooks/settlement?src=bank-a' '{"settlementRef":"SR-2026-09-camp-01","campaignId":"7c2e9a14-6b3d-4f58-a1c0-5d8e2b4f9a36","settlementItemId":"5b0d8e7a-3c41-4f6a-9b52-7a1e0c9d2f64","partyId":"0b8a6f2e-1d34-4c57-8e90-a3b5c7d9e1f2","externalUserId":"12345","denominationCode":"PTS","pointAmount":"100","exchangeRateSnapshot":"10","moneyAmount":"1000","moneyCurrency":"VND","deliveryNonce":"9c1f4a7e-52b8-4d03-a6e9-0f3b8d2c7a15"}' \
   | openssl dgst -sha256 -hmac 'stl_demo_0123456789abcdef' -r | cut -d' ' -f1
 ```
 
@@ -364,12 +364,12 @@ secret     :  stl_demo_0123456789abcdef
 timestamp  :  1786698753
 method     :  POST
 path       :  /hooks/settlement?src=bank-a
-body       :  {"settlementRef":"SR-2026-09-camp-01","settlementItemId":"5b0d8e7a-3c41-4f6a-9b52-7a1e0c9d2f64","partyId":"0b8a6f2e-1d34-4c57-8e90-a3b5c7d9e1f2","externalUserId":"12345","denominationCode":"PTS","pointAmount":"100","exchangeRateSnapshot":"10","moneyAmount":"1000","moneyCurrency":"VND","deliveryNonce":"9c1f4a7e-52b8-4d03-a6e9-0f3b8d2c7a15"}
-             (341 bytes, NO trailing newline)
+body       :  {"settlementRef":"SR-2026-09-camp-01","campaignId":"7c2e9a14-6b3d-4f58-a1c0-5d8e2b4f9a36","settlementItemId":"5b0d8e7a-3c41-4f6a-9b52-7a1e0c9d2f64","partyId":"0b8a6f2e-1d34-4c57-8e90-a3b5c7d9e1f2","externalUserId":"12345","denominationCode":"PTS","pointAmount":"100","exchangeRateSnapshot":"10","moneyAmount":"1000","moneyCurrency":"VND","deliveryNonce":"9c1f4a7e-52b8-4d03-a6e9-0f3b8d2c7a15"}
+             (393 bytes, NO trailing newline)
 
 signing string :  1786698753.POST./hooks/settlement?src=bank-a.{"settlementRef":"SR-2026-09-camp-01",…}
 
-RESULT     :  sha256=8ddc17d7f9971d337114de47b256c2bacd0c1bd333ca0b566eb3569927f1c67b
+RESULT     :  sha256=97dbddee1b7e935b602309c7cf90b01b9b0810458b66770d79c59631af8b4f73
 ```
 
 ⚠️ **The query string is part of the path** — `?src=bank-a` is signed. Verify against the path and query

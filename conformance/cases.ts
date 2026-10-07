@@ -639,6 +639,7 @@ export function kySettlement(secret: string, tsSeconds: number, method: string, 
 function goiSettlement(over: Record<string, unknown> = {}): Record<string, unknown> {
   return {
     settlementRef: `CONF-${randomUUID().slice(0, 8)}`,
+    campaignId: randomUUID(),
     settlementItemId: `conf-item-${randomUUID()}`,
     partyId: `conf-party-${randomUUID().slice(0, 8)}`,
     denominationCode: 'CONF_POINT',

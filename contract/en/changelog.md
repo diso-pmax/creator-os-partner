@@ -24,6 +24,21 @@ such as "contract 1.4.0" still leads here.
 
 No changes.
 
+## v1.2.0-rc.3 — 2026-10-07
+
+🟢 **New: the settlement packet carries `campaignId`.** Every settlement notification now includes the id of the campaign
+its batch settles, right after `settlementRef`. It sits inside the signed body like every other field. The published
+schema (`SettlementPacket.json`, `openapi.yaml`) does not list it under `required`, and from this release the schema is
+**open** (`additionalProperties: true`), which is what [settlement.md §2.1](./settlement.md#21-request-body) always asked
+you to assume: ignore fields you do not recognize, so a field we add later does not break you.
+🟡 **Action for strict receivers:** before this release the published schema was CLOSED (`additionalProperties: false`). If you
+built a validator from a COPY of that older schema, it will reject the new field: refresh your copy of `SettlementPacket.json`
+(or ignore unknown fields) BEFORE this release reaches you. We send `campaignId` on every packet. Details: [settlement.md §2.1](./settlement.md#21-request-body).
+
+🟡 **Corrected: what `settlementRef` is.** The text said it spells out "campaign, period, denomination". It never did: it
+is the **end of the settled period** as an ISO 8601 UTC timestamp. Two campaigns settled for the same period therefore have
+the same `settlementRef`; use `campaignId` (and `denominationCode`) to tell them apart. No behavior changed; only the text.
+
 ## v1.2.0-rc.1 — 2026-10-06
 
 🟢 **New: send yourself a test settlement notification (sandbox only).** `POST /api/v1/integrations/settlement/test`, signed

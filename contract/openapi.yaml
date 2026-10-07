@@ -489,6 +489,9 @@ components:
         settlementRef:
           type: string
           minLength: 1
+        campaignId:
+          type: string
+          minLength: 1
         settlementItemId:
           type: string
           minLength: 1
@@ -526,7 +529,7 @@ components:
         - moneyAmount
         - moneyCurrency
         - deliveryNonce
-      additionalProperties: false
+      additionalProperties: true
       title: SettlementPacket
       description: "The packet WE send to your settlement endpoint (see webhooks.settlementDelivery). Ignore fields you do not recognize: we may add fields without a new contract version."
       x-serverSideChecks:

@@ -52,7 +52,8 @@ A missing condition is shown with its reason next to the **Send** button.
 
 ```jsonc
 {
-  "settlementRef":        "…",     // batch reference (campaign · period · denomination)
+  "settlementRef":        "…",     // batch reference — the END of the settled period, ISO 8601 UTC (e.g. "2026-09-30T16:59:59.999Z"); NOT a code that spells out campaign or denomination
+  "campaignId":           "…",     // the campaign this batch settles — see below
   "settlementItemId":     "…",     // line reference — echo it back VERBATIM in your POINT_REDEEMED event (§5)
   "partyId":              "…",     // recipient, OUR internal id
   "externalUserId":       "…",     // recipient, YOUR id for this user — the very value you sent us at launch / on events
@@ -68,6 +69,15 @@ A missing condition is shown with its reason next to the **Send** button.
 - **`externalUserId` is the field to credit by.** It is the identifier **you** gave us for this user. We
   never send a packet without it: when we cannot read it exactly for a line (none, or more than one),
   the **Send** action is refused on our side and nothing reaches you.
+- **`campaignId` tells you which campaign the money belongs to.** One batch settles exactly one campaign,
+  so every line of a batch carries the same `campaignId`: the id of that campaign on our side (the same
+  id you use in the launch path, `POST /campaigns/:campaignId/launch`). We send it on every packet. In the
+  published schema it is not in `required`, and the schema is open (`additionalProperties: true`), as the
+  last bullet of this list says: ignore fields you do not recognize. Before the release that added
+  `campaignId` the published schema was CLOSED, so a validator built from a COPY of that older schema
+  rejects our packets: refresh your copy of `SettlementPacket.json` (or ignore unknown fields) before that
+  release reaches you. Two campaigns settled for the same period have the same `settlementRef` but
+  different `campaignId`: **never key anything on `settlementRef` alone**.
 - `partyId` is our internal id — keep it for logs; do not look users up by it.
 - **The unit you receive is the point.** `exchangeRateSnapshot` / `moneyAmount` / `moneyCurrency` are
   shown **for reference only**; we do not convert anything on your behalf and you do not have to pay in
