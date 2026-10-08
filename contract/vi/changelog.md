@@ -25,6 +25,10 @@ tìm ra.
 
 Không đổi.
 
+## v1.3.0-rc.1 — 2026-10-08
+
+🟢 **Mới: `segments` ở `POST /campaigns/{campaignId}/launch`.** Một mảng tuỳ chọn các slug nhóm người chơi (xem [campaign-launch.md §4.1a](./campaign-launch.md#41a-nhóm-người-chơi-segments)). Thuần cộng thêm: thân không có trường này chạy y như cũ. **Đừng gửi cho tới khi Diso báo đã bật cho môi trường của bạn**: trước đó thân lời gọi chặt và một lời gọi có `segments` bị `400`, đó là hành vi đúng. Khi đã bật: mỗi slug phải đúng khuôn, sai một phần tử là `400` cả lời gọi (không có vé), tối đa 10 slug khác nhau mỗi lần, slug mà Diso chưa khai cho tích hợp của bạn **không** làm hỏng launch (chỉ là không được gắn), nhóm chỉ cộng thêm, và một người chơi mang tối đa 30 nhóm. Chữ ký và vector kiểm không đổi; `CreateLaunch.json` và `openapi.yaml` có thêm trường. [campaign-launch.md §4.1a](./campaign-launch.md#41a-nhóm-người-chơi-segments) còn có thân lời gọi ký mẫu, thân `400` đúng như thật, và lưu ý phản hồi `200` không cho biết nhóm nào được gắn; `400` nay có trong bảng mã lỗi của kênh launch.
+
 ## v1.2.0-rc.3 — 2026-10-07
 
 🟢 **Mới: gói tất toán mang `campaignId`.** Mỗi thông báo tất toán nay kèm mã chiến dịch mà đợt của nó tất toán, ngay
@@ -39,6 +43,20 @@ dựng bộ kiểm từ một BẢN SAO schema cũ đó, nó sẽ từ chối tr
 🟡 **Sửa: `settlementRef` là gì.** Tài liệu từng ghi nó thể hiện "chiến dịch, kỳ, mệnh giá". Thực tế chưa bao giờ như
 vậy: nó là **mốc cuối kỳ đã chốt** dạng ISO 8601 UTC. Hai chiến dịch tất toán cùng một kỳ vì thế có cùng
 `settlementRef`; hãy dùng `campaignId` (và `denominationCode`) để phân biệt. Hành vi không đổi, chỉ sửa chữ.
+
+🟢 **Làm rõ: gửi đơn nào.** [event-ingestion.md §5.2a](./event-ingestion.md#52a-gửi-đơn-nào--bạn-lọc-trước-khi-gửi) nay liệt kê
+năm điều kiện một đơn phải thoả trước khi bạn gửi sự kiện cho nó: không nằm sẵn trong giỏ hàng từ trước khi người mua sang, là
+đơn đầu tiên sau MỖI lần chuyển hướng trực tiếp từ chúng tôi (không phải mỗi người một đơn), đi đúng luồng không ngắt quãng, là đơn
+thành công (đơn huỷ thì `ORDER_CANCELLED` đảo lại, đơn gian lận phát hiện sau khi đã gửi cũng vậy), và thuộc ngành hàng có hoa
+hồng. Chúng tôi không kiểm hộ các điều kiện này được, nên **bạn lọc trước khi gửi**. Mục này cũng nói rõ đơn được ghi nhận ngay khi
+`ORDER_CREATED` tới, và muốn chỉ tính đơn sau khi đã giao thì chỉ gửi `ORDER_COMPLETED` vào lúc giao, kèm cái giá: đơn như vậy mà
+giao sau khi chương trình kết thúc thì không được tính. Hành vi không đổi, chỉ làm rõ chữ.
+
+🟡 **Cập nhật bộ hợp chuẩn (`conformance/`): bản cũ báo đỏ giả ở `LAUNCH-8`.** `GET /launch` có thể đặt nhiều hơn một cookie (cookie phiên của người chơi
+và một cookie hiển thị như `reward_skin` mang giao diện mùa của chiến dịch). Cả hai đều là header `Set-Cookie` bình thường. Bản cũ của bộ kiểm chỉ đọc
+`Set-Cookie` CUỐI CÙNG, nên với hai người dùng cùng một chiến dịch nó thấy hai giá trị bằng nhau và báo "hai người dùng khác nhau nhận cùng một session".
+Bản mới đọc mọi `Set-Cookie` (`headers.getSetCookie()`) và so sánh tất cả. Hợp đồng launch không đổi, mã của bạn không phải sửa; chỉ cần lấy `run.ts` và
+`cases.ts` mới trước khi chạy `LAUNCH-8` với môi trường có đặt cookie hiển thị.
 
 ## v1.2.0-rc.1 — 2026-10-06
 

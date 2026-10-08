@@ -251,6 +251,40 @@ unknown_event_type` (see [error-codes.md](./error-codes.md)), listing the valid 
 ⭐ **You do not need to send `ORDER_CREATED`.** Sending only `ORDER_COMPLETED` is a complete, valid
 integration. `ORDER_CREATED` only moves the recognition point earlier.
 
+#### 5.2a Which orders to send — you filter BEFORE you send
+
+We **cannot check the five conditions below**, because the data lives on your side (your cart, your checkout, your
+catalog). So **you** decide, and you send an order event **only** for an order that meets **all five**. Every order
+event you do send is counted, provided it also meets the conditions of the program itself (a minimum value, the
+brand or category, the time window, the shopper having joined):
+
+1. **The order was not already in the cart before the shopper arrived.** An order built from a cart that existed
+   before the shopper came from us is not ours to count.
+2. **It is the FIRST order after a direct redirect from us — after EACH redirect.** The shopper comes to you by our
+   redirect (the link or widget that sends them from our product to your site); only the first order that follows
+   that redirect is sent. This is not "one order per shopper": when the same shopper comes to you through
+   another redirect from us, the first order after THAT redirect is sent again. Keep sending these, because a
+   program can reward several orders (for example a milestone at a number of orders).
+3. **The order went through the normal flow, uninterrupted** — from the redirect to checkout, in one go, not broken
+   off and resumed by another path.
+4. **The order succeeded.** An order that fails or is never completed is not sent. An order that is **cancelled**
+   after you sent it: send `ORDER_CANCELLED` with the **same `orderId`** and we reverse what it earned. An order you
+   judge **fraudulent**: do not send it; and if you only find out **after** you sent it, send `ORDER_CANCELLED` for it
+   too. Whether a partial refund or a return counts as a cancellation is set by each program, not here.
+5. **The order is in a category that pays commission.** Do not send an order of a category that has none.
+
+Two more things about timing:
+
+- We recognize an order **as soon as we receive `ORDER_CREATED`**. If you want an order to count only **after it
+  has been delivered** (a program may say that a valid order is one delivered to the shopper), do not send
+  `ORDER_CREATED`: send only `ORDER_COMPLETED`, at the moment the order is delivered.
+- ⚠️ **The cost of sending only `ORDER_COMPLETED`:** for such an order the moment we recognize it IS the moment of
+  `ORDER_COMPLETED`. If its `occurredAt` (the delivery time) falls **after the program has ended**, the order is
+  **not counted**, even if it was placed while the program was running. An order placed in the last days of a
+  program and delivered after the end is lost this way. If that matters to you, send `ORDER_CREATED` at placement.
+- Whatever you send is counted. An order you should have filtered out but sent anyway is counted, and a
+  cancellation is the only way to take it back.
+
 ### 5.3 `payload` — by type
 
 `ORDER_CREATED` / `ORDER_COMPLETED` / `ORDER_CANCELLED`:

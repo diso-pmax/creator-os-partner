@@ -408,9 +408,12 @@ export function taoLaunch(
   // Optional partner-side name suggestion. Omitted ⇒ the body stays exactly
   // `{"externalUserId":...}`, so every existing caller signs the same bytes as before.
   displayName?: string,
+  // Optional player groups. Omitted ⇒ the body stays byte-for-byte what it was. Typed `unknown` on purpose: the
+  // conformance case that proves a malformed value is refused has to be able to send one.
+  segments?: unknown,
 ): Promise<PhanHoi> {
   // The signature is computed over this exact string and the same string is sent as the body.
-  const raw = JSON.stringify(displayName === undefined ? { externalUserId } : { externalUserId, displayName });
+  const raw = JSON.stringify({ externalUserId, ...(displayName === undefined ? {} : { displayName }), ...(segments === undefined ? {} : { segments }) });
   const ts = String(Math.floor(Date.now() / 1000));
   return goi(`${cf.cuaNenTang}/campaigns/${campaignId}/launch`, {
     method: 'POST',
@@ -434,6 +437,16 @@ function moLaunch(goi: GoiHttp, launchUrl: string, ghiDe?: Record<string, string
   const u = new URL(launchUrl);
   for (const [k, v] of Object.entries(ghiDe ?? {})) u.searchParams.set(k, v);
   return goi(u.toString(), { method: 'GET', headers: {}, redirect: 'manual' });
+}
+
+/**
+ * Every `Set-Cookie` of a response. Prefers `setCookies` (the real runner fills it from `headers.getSetCookie()`); a hand-made
+ * response that only has `headers['set-cookie']` (one string, or several joined by a newline) still works.
+ */
+function cookiesCua(r: PhanHoi): string[] {
+  if (r.setCookies && r.setCookies.length > 0) return r.setCookies;
+  const mot = r.headers['set-cookie'];
+  return mot ? mot.split('\n') : [];
 }
 
 const laLaunchUrl = (b: unknown): b is { launchUrl: string; expiresAt: string } =>
@@ -464,7 +477,7 @@ const LAUNCH: Ca[] = [
       const r = await moLaunch(goi, tao.body.launchUrl);
       if (r.status !== 302) return truot(`mong 302, nhận ${r.status}`);
       // 🔴 KHÔNG đọc tên/giá trị cookie — đó là chi tiết hiện thực. Chỉ cần MỘT session được cấp.
-      return r.headers['set-cookie'] ? dat() : truot('302 nhưng thiếu header `Set-Cookie` — không thấy session được cấp');
+      return cookiesCua(r).length > 0 ? dat() : truot('302 nhưng thiếu header `Set-Cookie` — không thấy session được cấp');
     },
   },
   {
@@ -575,7 +588,7 @@ const LAUNCH: Ca[] = [
             'server đang đọc một trường mà hợp đồng nói nó phải bỏ qua',
         );
       }
-      return rac.headers['set-cookie']
+      return cookiesCua(rac).length > 0
         ? dat()
         : truot('lượt có trường lạ không nhận được `Set-Cookie` — trường bị gắn thêm đã phá phiên');
     },
@@ -597,10 +610,38 @@ const LAUNCH: Ca[] = [
       if (!laLaunchUrl(taoA.body) || !laLaunchUrl(taoB.body)) return truot('không tạo được cả hai launch grant để thử');
       const [rA, rB] = await Promise.all([moLaunch(goi, taoA.body.launchUrl), moLaunch(goi, taoB.body.launchUrl)]);
       if (rA.status !== 302 || rB.status !== 302) return truot(`cả hai lượt tiêu thụ phải 302, nhận ${rA.status}/${rB.status}`);
-      const cookieA = rA.headers['set-cookie'];
-      const cookieB = rB.headers['set-cookie'];
-      if (!cookieA || !cookieB) return truot('thiếu header `Set-Cookie` ở một trong hai lượt');
-      return cookieA !== cookieB ? dat() : truot('hai externalUserId KHÁC nhau nhưng nhận CÙNG session — nghi lẫn danh tính');
+      // ALL the cookies of each turn, not the last one: a server may set a display cookie after the session cookie
+      // (same value for two users of one campaign), and comparing only that would blame a correct server.
+      const cookieA = cookiesCua(rA);
+      const cookieB = cookiesCua(rB);
+      if (cookieA.length === 0 || cookieB.length === 0) return truot('thiếu header `Set-Cookie` ở một trong hai lượt');
+      return cookieA.join('\n') !== cookieB.join('\n') ? dat() : truot('hai externalUserId KHÁC nhau nhưng nhận CÙNG session — nghi lẫn danh tính');
+    },
+  },
+  {
+    ma: 'LAUNCH-9',
+    chieu: 'LAUNCH',
+    ten: '`segments` sai khuôn ⇒ 400 và KHÔNG có launch grant',
+    capNangLuc: null,
+    async chay(cf, goi) {
+      // One wrong element refuses the WHOLE call, even next to a well-formed slug; upper case is refused, never normalised.
+      const r = await taoLaunch(cf, goi, cf.launchCampaignId, nguoiDungMoi(), undefined, ['khach-moi', 'Khach-Moi']);
+      if (r.status !== 400) return truot(`mong 400 cho một slug sai khuôn, nhận ${r.status}`);
+      return laLaunchUrl(r.body) ? truot('lời gọi bị từ chối nhưng thân vẫn có `launchUrl` — một grant đã được tạo') : dat();
+    },
+  },
+  {
+    ma: 'LAUNCH-10',
+    chieu: 'LAUNCH',
+    ten: '`segments` đúng khuôn nhưng chưa khai cho tích hợp ⇒ launch vẫn thành công (nhóm chỉ không được gắn)',
+    capNangLuc: null,
+    async chay(cf, goi) {
+      // A slug nobody declared for this integration. It must NOT fail the launch: "not declared yet" is an operations matter
+      // that can be true now and false later, never a reason to lose a player's entry.
+      const slug = `conf-chua-khai-${randomUUID().slice(0, 8)}`;
+      const r = await taoLaunch(cf, goi, cf.launchCampaignId, nguoiDungMoi(), undefined, [slug]);
+      if (r.status !== 200) return truot(`mong 200 (nhóm chưa khai không được làm hỏng launch), nhận ${r.status}`);
+      return laLaunchUrl(r.body) ? dat() : truot('thân 200 phải có `launchUrl` dạng chuỗi');
     },
   },
 ];

@@ -51,7 +51,17 @@ export type KetQuaCa = {
  *    bài kiểm của chính nó *(bơm phản hồi giả, khẳng định ca đọc đúng)* — nếu không thì thứ duy nhất
  *    kiểm được bộ kiểm là một máy chủ thật, và lúc đó **không ai kiểm nó cả**.
  */
-export type PhanHoi = { status: number; body: unknown; headers: Record<string, string> };
+export type PhanHoi = {
+  status: number;
+  body: unknown;
+  headers: Record<string, string>;
+  /**
+   * Every `Set-Cookie` of the response, one entry each. `headers` is a plain object, so two `Set-Cookie` headers collapse
+   * into ONE key; a case that needs the cookies reads this field. Optional: a hand-made response with a single
+   * `headers['set-cookie']` still works (see `cookiesCua` in `cases.ts`).
+   */
+  setCookies?: string[];
+};
 export type GoiHttp = (
   duong: string,
   tuyChon: {
@@ -96,7 +106,7 @@ export type CauHinh = {
    * phải năng lực tuỳ chọn.
    */
   launchSecret: string;
-  /** Campaign THẬT, đang `active`, thuộc tenant của tích hợp — 8 ca LAUNCH launch đúng campaign này. */
+  /** Campaign THẬT, đang `active`, thuộc tenant của tích hợp — 10 ca LAUNCH launch đúng campaign này. */
   launchCampaignId: string;
   /**
    * YOUR settlement receiver (the URL the platform will call to hand you a settled point amount).

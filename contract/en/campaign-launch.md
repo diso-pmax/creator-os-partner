@@ -103,11 +103,57 @@ integration), not something enforced by a technical mechanism you can observe.
 | `campaignId` | URL path | string | **YES** | the campaign you want to launch |
 | `externalUserId` | JSON body | string | **YES** | 🔴 the same identifier you use as `externalUserId` on the EVENT channel for this user — see §7. Must not contain control characters (NUL, tab, newline, DEL…): a value that does is refused with `400 validation_error` and no launch is created |
 | `displayName` | JSON body | string or `null` | no | a **suggested** display name for this player, at most 256 characters. It is only a suggestion: if it does not pass our naming policy it is dropped and the launch still succeeds. Wrong type or over the length limit is a `400` |
+| `segments` | JSON body | array of strings, or `null` | no | the **player groups** you attach to this person, for example `["khach-moi-261013"]`. Send it only **after Diso tells you it is on** and **has declared the group** for your integration; see §4.1a |
 
 ```jsonc
 // POST /api/v1/campaigns/camp_01J.../launch
 { "externalUserId": "usr_4471", "displayName": "Alex" }   // displayName is optional
 ```
+
+### 4.1a Player groups (`segments`)
+
+A group is an **agreement between Diso and you**: Diso declares, on your integration and ahead of time, which groups are allowed (for example `khach-moi-261013`, "new customer, no order before 13/10, counted by you"). A launch only **attaches** those groups to the player; it never creates a group. A leaderboard that filters by a group ranks only the people who **currently carry** it.
+
+```jsonc
+{ "externalUserId": "usr_4471", "segments": ["khach-moi-261013"] }
+```
+
+| Rule | What it means for you |
+|---|---|
+| **Send it only after Diso tells you it is on** | Before then, a call that carries `segments` is a `400`, because the request body is strict. That is the correct behavior, not a bug on your side. |
+| **Every slug has the right shape** | Lower-case letters and digits joined by **one** hyphen (`a`, `a-b`, `khach-moi-261013`), at most **40** characters. Upper case, spaces, accents, underscores, control characters and the empty string are **invalid**. We do **not normalise**: `Khach-Moi` is a `400`, it does not become `khach-moi`. |
+| **One wrong element refuses the whole call** | `400 validation_error`, **no ticket is created**, even when the other slugs are fine. `segments` that is not an array, or an element that is not a string, is also a `400`. |
+| **At most 10 distinct slugs per call** | Duplicates in the same call are dropped **before counting**: 11 elements that contain only 10 distinct slugs still pass. 11 or more distinct slugs is a `400`. |
+| **A well-formed slug Diso has not declared for your integration (or has archived)** | **Not an error.** The launch succeeds, that group is **not attached**, and the declared groups in the same call still are. Diso sees the slug in a "not declared yet" list and can declare it. A group declared for another partner is **not usable** by you. |
+| **`segments` absent, `null` or `[]`** | **Nothing changes** about the player's groups. `[]` does **not** mean "clear all". |
+| **Groups only grow** | The player has group A and you send group B: they carry **both**. There is no way to remove a group through launch. |
+| **Ceiling of 30 groups per player, all or nothing** | If attaching would pass **30** accumulated groups, that launch adds **none** of its new groups (not "the first few"), and still succeeds. The result does not depend on the order you list them in. |
+| **Groups are attached when the player opens `launchUrl`** | Not when you call POST: a ticket that expires unopened attaches **nothing**. |
+| **Send the groups on EVERY launch** | If the attach step fails after the ticket was spent, the player still gets in but the groups are **not re-applied for you**; they are attached at the next launch, **when you send them again**. So send the groups on every launch of that person. |
+| **The signature covers `segments`** | `segments` is part of the signed body, so changing one character after signing is a `401`. We read groups only from this body, **never** from the URL, a cookie or the player's browser. |
+
+**A body and how to sign it.** `segments` is part of the JSON body, so **the bytes you sign must be exactly the bytes you send** (the same signing as §3, nothing extra):
+
+```bash
+BODY='{"externalUserId":"usr_4471","segments":["khach-moi-261013"]}'
+TS=$(date +%s)
+SIG="sha256=$(printf '%s.%s' "$TS" "$BODY" | openssl dgst -sha256 -hmac "$LAUNCH_KEY" -r | cut -d' ' -f1)"
+curl -sS -X POST "$API/campaigns/$CAMPAIGN_ID/launch" \
+  -H 'Content-Type: application/json' -H "X-API-Key: $ACCESS_KEY" \
+  -H "X-Timestamp: $TS" -H "X-Signature: $SIG" --data-raw "$BODY"
+```
+
+**What the `400` looks like** (the usual `validation_error` shape from [error-codes.md](./error-codes.md); `errors` is **plural** and keyed by the position of the wrong element):
+
+```jsonc
+// segments: ["khach-moi", "Khach-Moi"]  → one wrong element ⇒ the WHOLE call is refused, no ticket
+{ "status": 400, "title": "validation_error", "code": "validation_error",
+  "detail": "segments.1: Invalid", "errors": { "segments.1": ["Invalid"] } }
+```
+
+⚠️ **The `200` response does not tell you which groups were attached.** It only returns `launchUrl`/`expiresAt`, even when a slug has not been declared for your integration (that slug is then silently not attached, by design). To know whether a group is declared, ask us **before** you send it for the first time; do not infer it from the response.
+
+🔴 **A "new customer" leaderboard counts from the moment the player joins.** An order placed **before the player's first launch** is **not counted**. For a "new customer" group, launch the person **before or together with** their first order. A group that arrives late (after orders exist) still counts the orders from the moment they joined.
 
 ### 4.2 Response
 
@@ -253,6 +299,7 @@ Full context and the general HTTP status table:
 | Code | HTTP | When |
 |---|:--:|---|
 | — *(standard auth failure, see [error-codes.md](./error-codes.md#general-http-semantics))* | `401` | bad key, bad signature, or expired timestamp |
+| `validation_error` | `400` | the body is malformed: `externalUserId` empty or with a control character, `displayName` of the wrong type or too long, **`segments` malformed** (one wrong element refuses the whole call, see §4.1a), or an unknown field. No ticket was created |
 | `CAMPAIGN_NOT_FOUND` | `404` | campaign does not exist, **or** it belongs to a different tenant than your integration — intentionally indistinguishable, same reasoning as every other cross-tenant case in this integration |
 | `CAMPAIGN_NOT_LAUNCHABLE` | `422` | campaign exists and is yours, but is not currently `active` / outside its display window |
 
@@ -304,3 +351,9 @@ ours until the campaign page itself loads.
 **Does the LAUNCH secret rotate together with EVENT?**
 No — all channel secrets are independent; rotating or revoking one never affects another (see
 [testing.md § Key rotation](./testing.md#3-key-rotation)).
+
+**What if I send a group that has not been declared for my integration?**
+The call still returns `200`, the player still gets in, and that group is **not** attached (§4.1a). Once we declare it, the player's **next launch** attaches it; we do **not** back-fill players who do not launch again.
+
+**What must I do so a new player lands on the "new customer" leaderboard?**
+Launch that person **with** `segments` **before or together with** their first order (§4.1a). An order placed before the player's first launch is not counted.

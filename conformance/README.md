@@ -170,9 +170,9 @@ REDELIVER_BY_ID  gửi lại          ❌           ✅     ← phải biết th
 🔒 **Một năng lực được công nhận chỉ khi MỌI ca cấp nó đều đạt.** Một ca trượt là năng lực đó rớt —
 không có ô *"gần đạt"*.
 
-## 8 ca LAUNCH — chạy riêng, báo cáo riêng
+## 10 ca LAUNCH — chạy riêng, báo cáo riêng
 
-`LAUNCH-1..8` kiểm kênh Campaign Launch (`campaign-launch.md`) — hai lượt gọi `POST
+`LAUNCH-1..10` kiểm kênh Campaign Launch (`campaign-launch.md`) — hai lượt gọi `POST
 .../campaigns/:id/launch` + `GET /launch`. Khác VÀO/RA, chúng **không** đếm vào `15 ca bắt buộc` ở
 trên và không ảnh hưởng cổng vào cửa `integration_conformance` — kết quả in ở một mục báo cáo riêng.
 
@@ -186,6 +186,8 @@ trên và không ảnh hưởng cổng vào cửa `integration_conformance` — 
 | `LAUNCH-6` | campaign không cho phép tích hợp này | bị từ chối |
 | `LAUNCH-7` | code của campaign A không mở được campaign B | bị từ chối |
 | `LAUNCH-8` | externalUserId từ launch khớp session tạo ra | đúng người dùng |
+| `LAUNCH-9` | `segments` có một slug sai khuôn (kể cả chữ hoa) | `400`, không có `launchUrl` |
+| `LAUNCH-10` | `segments` đúng khuôn nhưng chưa khai cho tích hợp | `200` + `launchUrl` (nhóm chỉ không được gắn) |
 
 ⏱️ **`LAUNCH-4` chờ ~61 giây thật** (TTL của Launch Grant) — hết hạn/đã dùng/không tồn tại cố ý trả
 cùng một mã lỗi (§9, `campaign-launch.md`), nên không có cách nào giả lập nhanh hơn ở hộp đen HTTP.

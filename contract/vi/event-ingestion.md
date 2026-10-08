@@ -256,6 +256,39 @@ unknown_event_type` (xem [error-codes.md](./error-codes.md)), kèm danh sách gi
 ⭐ **Bạn không bắt buộc phải gửi `ORDER_CREATED`.** Chỉ gửi `ORDER_COMPLETED` đã là một tích hợp đầy đủ,
 hợp lệ. `ORDER_CREATED` chỉ đẩy thời điểm ghi nhận sớm hơn.
 
+#### 5.2a Gửi đơn nào — bạn lọc TRƯỚC khi gửi
+
+Chúng tôi **không kiểm được năm điều kiện dưới đây**, vì dữ liệu nằm phía bạn (giỏ hàng, bước thanh toán, danh mục
+hàng của bạn). Nên **bạn** quyết định, và chỉ gửi sự kiện đơn cho một đơn thoả **đủ cả năm**. Mọi sự kiện đơn bạn đã
+gửi sẽ được tính, miễn là nó cũng thoả điều kiện của chính chương trình (giá trị tối thiểu, thương hiệu hoặc ngành,
+cửa sổ thời gian, người mua đã tham gia):
+
+1. **Đơn không nằm sẵn trong giỏ hàng từ trước khi người mua sang từ chúng tôi.** Đơn dựng từ một giỏ đã có
+   trước đó thì không thuộc phần chúng tôi tính.
+2. **Đó là đơn ĐẦU TIÊN sau khi chuyển hướng trực tiếp từ chúng tôi — sau MỖI lần chuyển hướng.** Người mua sang
+   chỗ bạn qua đường chuyển hướng của chúng tôi (liên kết hoặc tiện ích đưa họ từ sản phẩm của chúng tôi sang trang
+   của bạn); chỉ đơn đầu tiên sau lần chuyển hướng đó được gửi. Đây KHÔNG phải "mỗi người một đơn": khi cùng người
+   mua đó sang chỗ bạn bằng một lần chuyển hướng khác từ chúng tôi, đơn đầu tiên sau lần ĐÓ lại được gửi. Hãy
+   tiếp tục gửi các đơn này, vì chương trình có thể thưởng theo nhiều đơn (ví dụ mốc theo số đơn).
+3. **Đơn đi đúng luồng, không ngắt quãng** — từ lúc chuyển hướng tới lúc thanh toán, liền một mạch, không bị cắt
+   giữa chừng rồi nối lại bằng đường khác.
+4. **Đơn thành công.** Đơn lỗi hoặc không bao giờ hoàn tất thì không gửi. Đơn bị **huỷ** sau khi bạn đã gửi: gửi
+   `ORDER_CANCELLED` với **cùng `orderId`**, chúng tôi sẽ đảo phần đơn đó đã được tính. Đơn bạn nhận định là
+   **gian lận**: đừng gửi; còn nếu bạn chỉ phát hiện **sau khi** đã gửi thì cũng gửi `ORDER_CANCELLED` cho đơn đó.
+   Hoàn tiền một phần hay trả hàng có tính là huỷ hay không do từng chương trình quy định, không quy định ở đây.
+5. **Đơn thuộc ngành hàng có hoa hồng.** Đơn thuộc ngành không có hoa hồng thì không gửi.
+
+Hai điều nữa về thời điểm:
+
+- Chúng tôi ghi nhận đơn **ngay khi nhận `ORDER_CREATED`**. Muốn đơn chỉ được tính **sau khi đã giao hàng** (chương
+  trình có thể quy định đơn hợp lệ là đơn đã giao tới người mua) thì đừng gửi `ORDER_CREATED`: chỉ gửi
+  `ORDER_COMPLETED`, vào lúc đơn đã giao.
+- ⚠️ **Cái giá của việc chỉ gửi `ORDER_COMPLETED`:** với đơn như vậy, thời điểm chúng tôi ghi nhận CHÍNH LÀ lúc
+  `ORDER_COMPLETED`. Nếu `occurredAt` của nó (lúc giao) rơi **sau khi chương trình đã kết thúc** thì đơn **không được
+  tính**, dù đơn được đặt khi chương trình còn chạy. Đơn đặt vào những ngày cuối của chương trình rồi giao sau khi
+  kết thúc sẽ mất điểm theo cách này. Nếu điều đó quan trọng với bạn, hãy gửi `ORDER_CREATED` ngay lúc đặt đơn.
+- Cái gì bạn gửi thì được tính. Một đơn lẽ ra phải lọc mà vẫn gửi sẽ bị tính, và gửi huỷ là cách duy nhất để lấy lại.
+
 ### 5.3 `payload` — theo từng loại
 
 `ORDER_CREATED` / `ORDER_COMPLETED` / `ORDER_CANCELLED`:

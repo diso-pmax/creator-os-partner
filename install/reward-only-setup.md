@@ -101,10 +101,12 @@ Câu ② phải ra đúng hai dòng:
 
 | rolname | rolbypassrls | rolsuper | dung_schema | bang_thieu_quyen |
 |---|---|---|---|---|
-| `creator_os_app` | `f` | `f` | `t` | `0` |
-| `creator_os_worker` | `t` | `f` | `t` | `0` |
+| `creator_os_app` | `f` | `f` | `t` | `1` |
+| `creator_os_worker` | `t` | `f` | `t` | `1` |
 
 Thiếu một dòng nghĩa là tài khoản đó chưa có, hoặc sai tên.
+
+`bang_thieu_quyen` là `1` cho **cả hai** tài khoản, đúng như thiết kế: bảng nhận gói tin từ sàn (`marketplace_webhook_ingress`) bị thu quyền trực tiếp có chủ đích, ứng dụng và tác vụ nền chỉ đi qua các hàm được cấp riêng. Số lớn hơn `1`, hoặc `1` mà bảng thiếu quyền không phải bảng đó, nghĩa là migration chưa cấp đủ quyền; xem nó là bảng nào bằng cách thêm điều kiện `AND NOT (has_table_privilege(...) AND ...)` vào truy vấn và chọn `t.tablename`.
 
 ---
 

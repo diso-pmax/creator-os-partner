@@ -37,6 +37,40 @@ có gì thì ghi *"không"*, đừng bỏ trống:
 
 Không đổi.
 
+## v1.3.0-rc.1 — 2026-10-08
+
+Nâng từ v1.2.0-rc.6. **Có migration mới** (mười bốn, chạy bằng tài khoản migration như mọi lần; xem mục 4 và 4e của [upgrade.md](upgrade.md)). Có ba biến môi trường TUỲ CHỌN mới hoặc đổi cách đọc (xem bên dưới).
+
+**Migration mới (chỉ thêm, trừ một chuẩn hoá dữ liệu)**
+
+- Thêm cột **giao diện mùa** cho chiến dịch Thưởng.
+- Thêm bảng **danh mục bán chung** của Storefront và Partner Sale; giữ đúng tập lựa chọn ban đầu của từng đơn vị (danh mục rỗng cũng được ghi rõ).
+- Ba migration cho công cụ **Chuẩn bị link** của Program Link: thêm cột nguồn Storefront vào bản sửa và công cụ của Link, cấp quyền chạy hàm kiểm cho các tài khoản ghi của ứng dụng đang có, và sửa một hàm kiểm để đọc đúng tên cột quan hệ khi xuất bản.
+- Hai migration cho **chủ hoa hồng của đơn hàng**: thêm bảng ghi chủ hoa hồng đã chứng minh và sửa hàm kiểm cho đúng thành phần hoa hồng của đối tác.
+- Một migration thêm hai bảng **danh mục nhóm người chơi** của tích hợp (chỉ thêm, không backfill dữ liệu có sẵn).
+- Một migration thêm bảng **chứng cứ giao hàng** của đơn trang bán hàng (thời điểm giao thực tế, hạn trả hàng, chứng từ; chỉ thêm).
+- Một migration **đổi tên chính sách cách ly theo đơn vị** của ba bảng mới (chủ hoa hồng, xung đột hoa hồng, chứng cứ giao hàng) về tên chuẩn mà bộ kiểm quyền yêu cầu; không đổi biểu thức, không đổi quyền ai thấy gì.
+- Một migration thêm cột lưu tạm **nhóm người chơi đối tác gửi lúc vào game** trên vé một lần (chỉ thêm; xoá ngay sau khi nhóm được áp cho người chơi).
+- Hai migration cho **giới thiệu từ Storefront**: thêm các bảng ghi ngữ cảnh giới thiệu và sự đồng ý của khách, và sửa hàm kiểm quyền nguồn Storefront để chấp nhận kiểu chạy cục bộ qua HTTP trên máy phát triển.
+- Một migration **chuẩn hoá giá trị mặc định** của đúng hai hồ sơ kế toán nền, để Finance nâng từ bản cũ lên không còn tạo điều chỉnh trả `UNKNOWN`. Đây là bước duy nhất sửa dữ liệu có sẵn; nó chỉ chạm hai hồ sơ đó.
+
+**Biến môi trường**
+
+- 🟢 **`STOREFRONT_REFERRAL_COOKIE_SECRET` (tuỳ chọn):** khoá ký cookie giới thiệu từ Storefront, tối thiểu 32 ký tự. Không đặt biến này thì hệ thống dùng `JWT_SECRET` nếu nó đủ 32 ký tự. Đã đặt mà để rỗng (dòng `STOREFRONT_REFERRAL_COOKIE_SECRET=`) hoặc ngắn hơn 32 ký tự thì `JWT_SECRET` **không** được dùng thay, và ghi nhận giới thiệu báo không dùng được. Hoặc xoá hẳn dòng, hoặc đặt đủ 32 ký tự. Ứng dụng vẫn khởi động bình thường; chỉ riêng ghi nhận giới thiệu bị tắt.
+- `STOREFRONT_LOCAL_HTTP` chỉ dành cho máy phát triển; production bỏ qua biến này, không cần đặt.
+- 🟢 **Hai biến TUỲ CHỌN mới cho webview thưởng:** `REWARD_SUPPORT_URL` (đường dẫn Hỗ trợ / Liên hệ) và `REWARD_TERMS_URL` (đường dẫn Điều khoản và quyền riêng tư). Chỉ nhận `https:`, `tel:` hoặc `mailto:`; không đặt (hoặc giá trị khác) thì mục tương ứng ở màn Cài đặt của người chơi **ẩn**. Không có giá trị mặc định, không cần đặt để chạy.
+- 🔴 `PLATFORM_BASE_DOMAINS` — **không thêm mới, nhưng cách đọc đã đổi.** Giá trị chỉ cần dọn (scheme `https://`, dấu chấm ở đầu hoặc cuối, `*.`, viết hoa, trùng) nay được **tự chuẩn hoá** và mỗi phần tử bị sửa hay bị loại in một dòng cảnh báo lúc khởi động. Phần tử không phải tên miền từ hai nhãn trở lên (có cổng, có đường dẫn, một nhãn) bị **loại, không đoán**.
+- 🔴 **Ở production, nếu biến được đặt nhưng không còn phần tử nào dùng được thì ứng dụng KHÔNG khởi động** (trước đây lớp chặn tên miền tắt im lặng). Biến để trống hoặc không đặt vẫn hợp lệ. Kiểm trước khi nâng bằng `preflight:env` ở bước 4a của [upgrade.md](upgrade.md): mã thoát `4` đến `7` là báo biến này.
+- 🟡 Hai tên miền gốc **chồng nhau** (ví dụ `example.com` và `portal.example.com`): host nay khớp tên miền gốc **dài nhất**, không còn phụ thuộc thứ tự khai; host đúng bằng một tên miền gốc thì không còn sinh ra mã đơn vị. Nếu trước đây bạn dựa vào thứ tự khai thì kiểm lại địa chỉ của các đơn vị.
+
+**Quay lui**
+
+- Chưa kiểm quay lui bằng image cũ cho bản này. Các migration trên đã chạy thì quay lui image cần xét từng migration; nếu cần, báo đội phát hành trước khi nâng.
+
+**Tài liệu (không đổi hành vi của hệ thống)**
+
+- 🔴 Mục mới **4e** của [upgrade.md](upgrade.md): kiểm **chủ sở hữu** cơ sở dữ liệu trước khi chạy migration. Cơ sở dữ liệu do tài khoản khác dựng (ví dụ khôi phục bản sao lưu bằng tài khoản quản trị) có thể lẫn chủ, khi đó migration dừng giữa chừng với `must be owner of type …` hoặc `permission denied to create extension …`. Mục 4e có đoạn SQL kiểm, đoạn SQL đổi chủ và cách chạy tiếp sau khi migration đã dừng. Ba extension `citext`, `btree_gist`, `pgcrypto` phải nằm trong schema `creator_os`.
+- Câu kiểm ② của [hướng dẫn cài](reward-only-setup.md): kỳ vọng nay là **`1`** cho cả hai tài khoản (không phải `0`), vì một bảng nhận gói tin từ sàn bị thu quyền có chủ đích.
 ## v1.2.0-rc.6 — 2026-10-07
 
 Không đổi.

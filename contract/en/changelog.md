@@ -24,6 +24,10 @@ such as "contract 1.4.0" still leads here.
 
 No changes.
 
+## v1.3.0-rc.1 — 2026-10-08
+
+🟢 **New: `segments` on `POST /campaigns/{campaignId}/launch`.** An optional array of player-group slugs (see [campaign-launch.md §4.1a](./campaign-launch.md#41a-player-groups-segments)). Purely additive: a body without it behaves exactly as before. **Do not send it until Diso tells you it is on for your environment**: until then the body is strict and a call carrying `segments` is a `400`, which is the correct behavior. Once on: every slug must be well-formed or the whole call is a `400` (no ticket), at most 10 distinct slugs per call, a slug Diso has not declared for your integration does **not** fail the launch (it is simply not attached), groups only ever grow, and a player carries at most 30. The signature and the test vector do not change; `CreateLaunch.json` and `openapi.yaml` gain the field. [campaign-launch.md §4.1a](./campaign-launch.md#41a-player-groups-segments) also carries a signed example body, the exact `400` body, and the note that a `200` does not say which groups were attached; the `400` is now listed in the launch error tables.
+
 ## v1.2.0-rc.3 — 2026-10-07
 
 🟢 **New: the settlement packet carries `campaignId`.** Every settlement notification now includes the id of the campaign
@@ -38,6 +42,20 @@ built a validator from a COPY of that older schema, it will reject the new field
 🟡 **Corrected: what `settlementRef` is.** The text said it spells out "campaign, period, denomination". It never did: it
 is the **end of the settled period** as an ISO 8601 UTC timestamp. Two campaigns settled for the same period therefore have
 the same `settlementRef`; use `campaignId` (and `denominationCode`) to tell them apart. No behavior changed; only the text.
+
+🟢 **Clarified: which orders to send.** [event-ingestion.md §5.2a](./event-ingestion.md#52a-which-orders-to-send--you-filter-before-you-send)
+now lists the five conditions an order must meet before you send an event for it: not already in the cart before the shopper
+arrived, the first order after EACH direct redirect from us (not one order per shopper), the normal flow without interruption, a
+successful order (a cancelled one is reversed by `ORDER_CANCELLED`, and so is a fraudulent one found after it was sent), and a
+category that pays commission. We cannot check these for you, so **you filter before you send**. It also states that an order is
+recognized as soon as `ORDER_CREATED` arrives, and that to count an order only after delivery you send only `ORDER_COMPLETED`, at
+delivery — with the cost: such an order delivered after the program has ended is not counted. No behavior changed; only the text.
+
+🟡 **Update your conformance suite (`conformance/`): an old copy reports a false red on `LAUNCH-8`.** `GET /launch` can set more than one cookie
+(the player session, and a display cookie such as `reward_skin` that carries the season look of the campaign). Both are plain `Set-Cookie` headers. An
+older copy of the suite read only the LAST `Set-Cookie`, so with two users of one campaign it saw equal values and answered "two different users got the
+same session". The new copy reads every `Set-Cookie` (`headers.getSetCookie()`) and compares all of them. Nothing changes in the launch contract and no
+code of yours changes; just take the new `run.ts` and `cases.ts` before you run `LAUNCH-8` against an environment that sets the display cookie.
 
 ## v1.2.0-rc.1 — 2026-10-06
 

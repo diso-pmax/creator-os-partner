@@ -39,7 +39,13 @@ export const goiThat: GoiHttp = async (duong, tuyChon) => {
     // để câu "vì sao" của ca nói được điều gì đó có ích.
     body = { _thanTho: text.slice(0, 500) };
   }
-  return { status: r.status, body, headers: Object.fromEntries(r.headers.entries()) };
+  // `Object.fromEntries(headers.entries())` keeps only the LAST of several `Set-Cookie` headers (a server may set a
+  // display cookie next to the session cookie, and that is valid HTTP). Read them all, and keep `headers['set-cookie']`
+  // as the whole list joined, so a reader of the old key still sees every cookie, not just the last one.
+  const setCookies = r.headers.getSetCookie();
+  const headers: Record<string, string> = Object.fromEntries(r.headers.entries());
+  if (setCookies.length > 0) headers['set-cookie'] = setCookies.join('\n');
+  return { status: r.status, body, headers, setCookies };
 };
 
 /**
@@ -76,7 +82,7 @@ export async function chayHopChuan(cf: CauHinh, goi: GoiHttp = goiThat): Promise
 }
 
 /**
- * Chạy 8 ca LAUNCH — TÁCH RIÊNG khỏi `chayHopChuan()` (xem `cases.ts` — cố ý không nằm trong
+ * Chạy 10 ca LAUNCH — TÁCH RIÊNG khỏi `chayHopChuan()` (xem `cases.ts` — cố ý không nằm trong
  * `CA_BAT_BUOC`). Cùng khuôn try/catch-mỗi-ca: một ca ném = TRƯỢT, không làm rớt cả lượt.
  *
  * ⏱️ LAUNCH-4 chờ ~61s thật (TTL) — lượt gọi hàm này tốn hơn một phút, đã khai ở testing.md §1.5.

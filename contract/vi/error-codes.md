@@ -140,6 +140,7 @@ hành** — xem [README.md § Thứ tự bắt buộc](./README.md#-thứ-tự-b
 | Status | Khi nào | có `code`? |
 |:--:|---|:--:|
 | `200` | Launch Grant đã tạo | — (trả `launchUrl`/`expiresAt`, không có trường `code`) |
+| `400` | `validation_error` — thân sai khuôn (kể cả `segments` sai khuôn: một phần tử sai ⇒ từ chối cả lời gọi, chưa có vé); dùng trường `errors` số nhiều, xem hình dạng ở trên | ✅ |
 | `401` | sai key, sai chữ ký, hoặc timestamp hết hạn — cùng hình dạng với `401` của mọi kênh khác (không có trường `code`) | ✗ |
 | `404` | `CAMPAIGN_NOT_FOUND` — campaign không tồn tại, **hoặc** thuộc tenant khác với tích hợp của bạn (cố ý không phân biệt, cùng lý lẽ với mọi ca cross-tenant khác trong tích hợp này) | ✅ |
 | `422` | `CAMPAIGN_NOT_LAUNCHABLE` — campaign tồn tại và là của bạn, nhưng hiện không `active` / ngoài cửa sổ hiển thị | ✅ |

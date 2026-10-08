@@ -138,6 +138,7 @@ channel — see [README.md § Required order](./README.md#-required-order-launch
 | Status | When | `code`? |
 |:--:|---|:--:|
 | `200` | Launch Grant created | — (returns `launchUrl`/`expiresAt`, not a `code` field) |
+| `400` | `validation_error` — malformed body (including a malformed `segments`: one wrong element refuses the whole call, no ticket); uses the plural `errors` field, shape shown above | ✅ |
 | `401` | bad key, bad signature, or expired timestamp — same shape as every other channel's `401` (no `code` field) | ✗ |
 | `404` | `CAMPAIGN_NOT_FOUND` — campaign does not exist, **or** belongs to a different tenant than your integration (intentionally indistinguishable, same reasoning as every other cross-tenant case in this integration) | ✅ |
 | `422` | `CAMPAIGN_NOT_LAUNCHABLE` — campaign exists and is yours, but is not currently `active` / outside its display window | ✅ |

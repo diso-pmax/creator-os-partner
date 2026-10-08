@@ -15,6 +15,21 @@
           "type": "null"
         }
       ]
+    },
+    "segments": {
+      "anyOf": [
+        {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 40,
+            "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+          }
+        },
+        {
+          "type": "null"
+        }
+      ]
     }
   },
   "required": [
@@ -24,6 +39,9 @@
   "title": "CreateLaunch",
   "description": "Body of POST /campaigns/{campaignId}/launch. campaignId is in the path, never in the body.",
   "x-serverSideChecks": [
-    "displayName is only a SUGGESTION: a value that fails the naming policy is dropped, the launch still succeeds"
+    "displayName is only a SUGGESTION: a value that fails the naming policy is dropped, the launch still succeeds",
+    "segments: every element must be a slug (lower-case words joined by single hyphens, at most 40 characters); one wrong element refuses the whole call with 400 and creates no ticket; at most 10 distinct slugs per call (duplicates are dropped before counting)",
+    "segments: a well-formed slug that Diso has not declared for YOUR integration (or has archived) does NOT fail the call: the launch succeeds and that group is simply not applied",
+    "segments only ever ADD groups to the player: absent, null and [] change nothing, and no launch can remove a group; a player carries at most 30 groups, and a call that would pass 30 adds none of its new groups"
   ]
 }
