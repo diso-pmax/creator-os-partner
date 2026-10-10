@@ -39,6 +39,33 @@ có gì thì ghi *"không"*, đừng bỏ trống:
 
 Không đổi.
 
+## v1.3.0-rc.3 — 2026-10-10
+
+Nâng từ v1.3.0-rc.2. **Có migration mới** (mười sáu, chạy bằng tài khoản migration như mọi lần; xem mục 4 và 4e của [upgrade.md](upgrade.md)). Tên thư mục trong `db/prisma/migrations/`, theo thứ tự chạy:
+
+- `20261008111000_4784_native_request_accept`
+- `20261008111100_4784_native_commission_owner`
+- `20261008111200_4784_native_request_guard_without_click`
+- `20261008111300_4784_own_native_link_results_projection`
+- `20261008112000_4780_native_partial_earnings`
+- `20261008112100_4780_native_link_earnings_projection`
+- `20261008113000_4785_native_source_corrections`
+- `20261008113100_4785_native_correction_projection`
+- `20261008114000_4786_native_source_finance_cases`
+- `20261008120000_4912_leaderboard_exclusions`
+- `20261008130000_5000_campaign_skin_schedule`
+- `20261009120000_5130_link_public_code`
+- `20261009150000_5152_public_display_consent`
+- `20261009150100_5152_creator_consent_revoke_permission`
+- `20261010120000_5114_settlement_kind`
+- `20261010130000_5089_reward_entries_…_txn_idx` *(tên thư mục đầy đủ có một từ nội bộ nên rút gọn ở đây; nhận ra bằng mốc thời gian `20261010130000`; thêm một chỉ mục cho bảng khoản thưởng)*
+
+Hai migration `20261008120000_4912_leaderboard_exclusions` và `20261008130000_5000_campaign_skin_schedule` có ghi riêng bên dưới, kèm cách quay lui. **Mười bốn migration còn lại chưa được kiểm quay lui bằng image cũ**: các migration đã chạy thì quay lui image cần xét từng migration; nếu cần, báo đội phát hành trước khi nâng.
+
+- 🟡 Migration `20261008120000_4912_leaderboard_exclusions` thêm hai bảng (`leaderboard_exclusion_scopes`, `leaderboard_award_exclusions`). Chạy tự động lúc triển khai, không cần làm tay. Quay lui bằng image cũ vẫn được: image cũ không đọc hai bảng này, và chúng rỗng cho tới khi có người dùng tính năng loại khỏi giải.
+- 🟡 Migration `20261008130000_5000_campaign_skin_schedule` thêm một cột nullable `skin_schedule` vào bảng `campaign_presentation` (lịch mùa của chiến dịch, HW26.3). Chạy tự động lúc triển khai, không cần làm tay. Quay lui bằng image cũ vẫn được: cột thừa không ảnh hưởng mã cũ.
+- Biến môi trường: không đổi.
+
 ## v1.3.0-rc.2 — 2026-10-10
 
 - 🔴 **Quay lui — v1.3 KHÔNG quay lui được bằng image cũ một khi đã có chiến dịch khai brand tài trợ theo hình bản ghi `{code, name}`** (Console có hai ô Mã và Tên). Image cũ chỉ đọc brand tài trợ dạng chuỗi và bỏ hết bản ghi, nên mọi đơn hàng bị coi là "không thuộc brand tài trợ" và người chơi **mất điểm âm thầm**, không có lỗi nào báo. Cấu trúc cơ sở dữ liệu thì vẫn tương thích, nên không có gì chặn việc quay lui: người vận hành phải tự biết. Việc cần làm: nếu đã có chiến dịch dùng hình mới thì **sửa tiến** (vá và phát hành bản sau), đừng quay lui. Chưa có chiến dịch nào dùng hình mới thì quay lui bằng image cũ vẫn được như mục 7 của [upgrade.md](upgrade.md). **Tự kiểm "đã dùng hình mới chưa":** chiến dịch nào có brand tài trợ được nhập ở hai ô **Mã** và **Tên** (hoặc đã lưu lại danh sách brand) **sau khi lên v1.3** thì coi là đã dùng hình mới; chiến dịch chưa ai sửa phần brand tài trợ từ lúc lên v1.3 thì chưa. Không chắc chiến dịch nào ở bên nào thì **hỏi Diso trước khi quay lui**. Danh sách cũ dạng chuỗi chạy bình thường ở bản mới (đọc thành `{code, name = code}`).

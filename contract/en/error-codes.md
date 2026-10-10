@@ -97,7 +97,7 @@ each element of an accepted batch is answered on its own, and the per-element `c
 | `422` | `batch_not_enabled` | batch delivery is not enabled for your key | ask us to enable it — nothing was processed |
 | `413` | `batch_too_large` | more events than your per-batch limit | split the batch (the limit is in `details.maxEventsPerBatch`) |
 | `413` | `payload_too_large` | the request body is bigger than your byte limit | split the batch (the limit is in `details.maxBytes`) |
-| `400` | `validation_error` | per element: this element is malformed | fix that element and resend only it |
+| `400` | `validation_error` | per element: this element is malformed, or holds a control character (NUL, DEL, …) in a text field | fix that element and resend only it; do not retry it as is |
 | `500` | `internal_error` | per element: platform failure while handling this element | retry it — deduplication keeps this safe |
 
 ### `422` business codes

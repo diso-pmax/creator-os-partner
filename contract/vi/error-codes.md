@@ -99,7 +99,7 @@ mỗi phần tử của một lô đã nhận được trả lời riêng, và `
 | `422` | `batch_not_enabled` | gửi theo lô chưa được bật cho khoá của bạn | nhờ chúng tôi bật — chưa xử lý gì |
 | `413` | `batch_too_large` | nhiều sự kiện hơn hạn mỗi lô của bạn | tách lô (hạn nằm ở `details.maxEventsPerBatch`) |
 | `413` | `payload_too_large` | thân yêu cầu lớn hơn hạn byte của bạn | tách lô (hạn nằm ở `details.maxBytes`) |
-| `400` | `validation_error` | theo từng phần tử: phần tử này sai khuôn | sửa đúng phần tử đó và chỉ gửi lại nó |
+| `400` | `validation_error` | theo từng phần tử: phần tử này sai khuôn, hoặc có ký tự điều khiển (NUL, DEL, …) trong trường chữ | sửa đúng phần tử đó và chỉ gửi lại nó; đừng gửi lại nguyên văn |
 | `500` | `internal_error` | theo từng phần tử: nền tảng lỗi khi xử lý phần tử này | gửi lại — khử trùng giữ cho việc này an toàn |
 
 ### Mã nghiệp vụ của `422`
