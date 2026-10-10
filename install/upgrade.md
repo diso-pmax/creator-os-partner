@@ -449,6 +449,12 @@ pg_restore --clean --if-exists --dbname="postgresql://<owner>:<mk>@<host>:5432/<
 Không có lệnh "migration ngược". Đừng tự xoá bảng hay cột để "trả lại như cũ" — cấu trúc lệch khỏi lịch sử
 migration thì lần nâng cấp sau sẽ hỏng.
 
+**Ngoại lệ: quay lui "được" về cấu trúc nhưng hỏng dữ liệu âm thầm.** Image cũ chạy được trên cơ sở dữ liệu mới,
+nhưng đọc sai thứ mới ghi, và khôi phục bản sao lưu cũng không phải lối ra (mất mọi dữ liệu sau lúc sao lưu).
+Ví dụ v1.3: sau khi có chiến dịch khai brand tài trợ theo hình `{code, name}`, image cũ bỏ hết bản ghi ⇒ người
+chơi mất điểm mà không có lỗi nào. Với những mục như vậy changelog ghi rõ điều kiện, và cách xử là **sửa tiến**
+(vá, phát hành bản sau), không quay lui.
+
 ---
 
 ## 8. Cần hỗ trợ

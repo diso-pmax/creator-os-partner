@@ -29,11 +29,22 @@ có gì thì ghi *"không"*, đừng bỏ trống:
 - **Việc phải làm tay** — thứ không nằm trong image: cấp thêm quyền cơ sở dữ liệu, mở thêm cổng, đổi cấu
   hình proxy hay tên miền.
 - **Quay lui** — *"được bằng image cũ"*, hoặc *"không quay lui được bằng image cũ — chỉ khôi phục bản sao
-  lưu"*. Nghĩa của hai câu này nằm ở mục 7 của [upgrade.md](upgrade.md).
+  lưu"*. Nghĩa của hai câu này nằm ở mục 7 của [upgrade.md](upgrade.md). Có thêm ca thứ ba, hiếm: *"được về
+  cấu trúc nhưng KHÔNG nên quay lui"* khi image cũ đọc sai dữ liệu mới ghi (hỏng âm thầm); mục đó ghi điều
+  kiện và nói **sửa tiến**, xem đoạn *Ngoại lệ* ở mục 7.
 
 ---
 
 ## Chưa phát hành
+
+Không đổi.
+
+## v1.3.0-rc.2 — 2026-10-10
+
+- 🔴 **Quay lui — v1.3 KHÔNG quay lui được bằng image cũ một khi đã có chiến dịch khai brand tài trợ theo hình bản ghi `{code, name}`** (Console có hai ô Mã và Tên). Image cũ chỉ đọc brand tài trợ dạng chuỗi và bỏ hết bản ghi, nên mọi đơn hàng bị coi là "không thuộc brand tài trợ" và người chơi **mất điểm âm thầm**, không có lỗi nào báo. Cấu trúc cơ sở dữ liệu thì vẫn tương thích, nên không có gì chặn việc quay lui: người vận hành phải tự biết. Việc cần làm: nếu đã có chiến dịch dùng hình mới thì **sửa tiến** (vá và phát hành bản sau), đừng quay lui. Chưa có chiến dịch nào dùng hình mới thì quay lui bằng image cũ vẫn được như mục 7 của [upgrade.md](upgrade.md). **Tự kiểm "đã dùng hình mới chưa":** chiến dịch nào có brand tài trợ được nhập ở hai ô **Mã** và **Tên** (hoặc đã lưu lại danh sách brand) **sau khi lên v1.3** thì coi là đã dùng hình mới; chiến dịch chưa ai sửa phần brand tài trợ từ lúc lên v1.3 thì chưa. Không chắc chiến dịch nào ở bên nào thì **hỏi Diso trước khi quay lui**. Danh sách cũ dạng chuỗi chạy bình thường ở bản mới (đọc thành `{code, name = code}`).
+- Biến môi trường: không đổi.
+
+## v1.2.0-rc.7 — 2026-10-09
 
 Không đổi.
 
@@ -71,6 +82,7 @@ Nâng từ v1.2.0-rc.6. **Có migration mới** (mười bốn, chạy bằng t�
 
 - 🔴 Mục mới **4e** của [upgrade.md](upgrade.md): kiểm **chủ sở hữu** cơ sở dữ liệu trước khi chạy migration. Cơ sở dữ liệu do tài khoản khác dựng (ví dụ khôi phục bản sao lưu bằng tài khoản quản trị) có thể lẫn chủ, khi đó migration dừng giữa chừng với `must be owner of type …` hoặc `permission denied to create extension …`. Mục 4e có đoạn SQL kiểm, đoạn SQL đổi chủ và cách chạy tiếp sau khi migration đã dừng. Ba extension `citext`, `btree_gist`, `pgcrypto` phải nằm trong schema `creator_os`.
 - Câu kiểm ② của [hướng dẫn cài](reward-only-setup.md): kỳ vọng nay là **`1`** cho cả hai tài khoản (không phải `0`), vì một bảng nhận gói tin từ sàn bị thu quyền có chủ đích.
+
 ## v1.2.0-rc.6 — 2026-10-07
 
 Không đổi.
