@@ -39,7 +39,11 @@ pg_dump --format=custom --file=creatoros-truoc-<ban-moi>.dump "postgresql://<own
 ```
 
 ⚠️ Bỏ đuôi `?schema=creator_os` khi đưa chuỗi kết nối cho `pg_dump` — công cụ này không nhận tham số đó.
+Ghi lại kết quả `objects_not_owned_by_migrate_role` của mục 4e bước 1 ở lúc sao lưu: mục 7 so bản khôi phục với số này.
 Giữ file sao lưu ở nơi tách khỏi máy chủ.
+
+Khi nâng nhiều bản một lúc: **dừng ứng dụng trước, rồi mới sao lưu, rồi mới chạy migration (mục 4)** — sao
+lưu phải lấy ngay trước migration, lúc không còn gì ghi vào cơ sở dữ liệu. Khôi phục bản này thế nào: mục 7.
 
 ---
 
@@ -196,7 +200,7 @@ psql "<kết nối tài khoản quản trị>" -X -q -v migrate_role=<tài kho�
 | `migrate_can_create` = `f` và extension `pgcrypto` chưa có | tài khoản migration không tạo được extension: bước 2 (đổi chủ cơ sở dữ liệu) |
 | `extensions_outside_creator_os` lớn hơn `0` | `ALTER EXTENSION <tên> SET SCHEMA creator_os;` (cột `in_schema` cho biết extension nào), rồi chạy lại bước 1 |
 
-Dòng `connected_as` cho biết ứng dụng và tác vụ nền đang kết nối bằng tài khoản nào: kỳ vọng `creator_os_app` và `creator_os_worker`, **không** phải tài khoản chủ sở hữu (tài khoản chủ vượt quy tắc lọc theo đơn vị).
+Dòng `connected_as` cho biết ứng dụng và tác vụ nền đang kết nối bằng tài khoản nào: kỳ vọng `creator_os_app` và `creator_os_worker`, **không** phải tài khoản chủ sở hữu (tài khoản chủ vượt quy tắc lọc theo đơn vị). Câu này chỉ có nghĩa **khi ứng dụng đang chạy**: chạy nó TRƯỚC khi dừng ứng dụng (mục 2). Ứng dụng đã dừng thì không còn phiên nào, kết quả rỗng là bình thường, không phải "đúng".
 
 **Bước 2, chỉ khi bước 1 báo lẫn chủ.** Sao lưu cơ sở dữ liệu trước (mục 2). Chạy lúc vắng và **tạm dừng tác vụ nền** (nó giữ giao dịch lâu nhất). Lưu đoạn sau thành file `doi-chu-so-huu.sql`: nó chỉ đổi chủ, không đổi dữ liệu, chỉ đụng schema `creator_os` và cơ sở dữ liệu, chạy lại được, và hoàn tác toàn bộ nếu sau 15 giây không lấy được khoá:
 
@@ -317,7 +321,7 @@ docker compose up -d
 | ứng dụng sẵn sàng | `curl -s -o /dev/null -w '%{http_code}\n' http://<host>:4700/api/v1/health/ready` | `200` |
 | bản quyền | `curl -s http://<host>:4700/api/v1/license/status` | `ACTIVE` |
 | tác vụ nền | `docker exec <container có RUN_WORKER=true> s6-svstat -o up /run/service/worker` | `true` |
-| quyền bảng | câu kiểm ở mục 2 của [hướng dẫn cài](reward-only-setup.md) | `bang_thieu_quyen` = `0` ở cả hai dòng |
+| quyền bảng | câu kiểm ở mục 2 của [hướng dẫn cài](reward-only-setup.md) | `bang_thieu_quyen` = `1` ở cả hai dòng (đúng thiết kế: một bảng nhận gói tin từ sàn bị thu quyền có chủ đích, xem mục 2 của hướng dẫn cài) |
 
 Xem nhãn `revision` của image mới:
 
@@ -442,9 +446,33 @@ chạy được trên cấu trúc của bản mới: chạy lại container vớ
 Khi đó chỉ còn một cách: khôi phục bản sao lưu ở mục 2, rồi chạy image cũ. **Mọi dữ liệu phát sinh sau lúc
 sao lưu sẽ mất.**
 
-```bash
-pg_restore --clean --if-exists --dbname="postgresql://<owner>:<mk>@<host>:5432/<db>" creatoros-truoc-<ban-moi>.dump
-```
+🔴 **Khôi phục vào cơ sở dữ liệu MỚI rồi đổi tên. KHÔNG dùng `pg_restore --clean` đè lên cơ sở dữ liệu đã
+migrate.** Đo trên bản sao dữ liệu thật khi nhảy nhiều bản một lúc: `--clean --if-exists` không xoá hết đối
+tượng của bản mới (kiểu liệt kê và ràng buộc đã tồn tại, bảng mới còn sót), nên khôi phục báo lỗi giữa chừng
+và **các bảng tiền, điểm bị nạp thêm một lần nữa** (bảng giao dịch điểm từ 52.465 lên 104.930 dòng). Kết quả
+là cơ sở dữ liệu vừa lệch cấu trúc vừa nhân đôi số liệu mà không có gì báo.
+
+Làm đúng thứ tự, mỗi lệnh một dòng (đổi `<…>` theo máy của bạn):
+
+1. Dừng container ứng dụng và worker (nếu chưa dừng): `docker stop <ten-container-api> <ten-container-worker>`
+2. Tạo cơ sở dữ liệu trống mới: `psql "postgresql://<owner>:<mk>@<host>:5432/postgres" -c "CREATE DATABASE creatoros_khoiphuc"`
+3. Khôi phục bản sao lưu vào cơ sở dữ liệu mới, **không** có `--clean`, dừng ngay khi có lỗi: `pg_restore --exit-on-error --dbname="postgresql://<owner>:<mk>@<host>:5432/creatoros_khoiphuc" creatoros-truoc-<ban-moi>.dump`. Mã thoát khác `0` hoặc có dòng `error:` ⇒ **DỪNG, không đổi tên**: bỏ bản nạp dở bằng `psql "postgresql://<owner>:<mk>@<host>:5432/postgres" -c "DROP DATABASE creatoros_khoiphuc"`, tìm nguyên nhân, làm lại từ bước 2. Cơ sở dữ liệu cũ chưa bị đụng. Nếu lỗi duy nhất là `COMMENT ON EXTENSION …` (khôi phục bằng tài khoản không đủ quyền trên extension), lập danh sách bỏ mục đó: `pg_restore -l creatoros-truoc-<ban-moi>.dump > ds.txt`, xoá các dòng có `COMMENT - EXTENSION`, rồi chạy lại bước 3 với thêm `-L ds.txt`. (Đo trên PG16 với tài khoản không phải superuser: không gặp lỗi này.)
+4. **Kiểm chủ sở hữu và quyền trên bản khôi phục, TRƯỚC khi đổi tên** (chỉ đọc; bỏ được bản khôi phục mà chưa đụng cơ sở dữ liệu cũ):
+   - chạy `kiem-chu-so-huu.sql` của mục 4e vào `creatoros_khoiphuc` (đổi `<db>` trong chuỗi nối thành `creatoros_khoiphuc`): `objects_not_owned_by_migrate_role` phải bằng **đúng giá trị mục 4e bước 1 đã báo lúc bạn sao lưu** (thường `0`). Nếu sao lưu **trước** khi sửa chủ ở 4e bước 2 thì số này khác `0`: chạy lại 4e bước 2 trên `creatoros_khoiphuc` cho tới khi ra `0`, rồi mới đổi tên;
+   - chạy câu ② của mục 2 trong [hướng dẫn cài](reward-only-setup.md) vào `creatoros_khoiphuc`: hai dòng `creator_os_app` / `creator_os_worker`, `dung_schema` = `t`, `bang_thieu_quyen` = `1` ở cả hai;
+   - sai một trong hai thì **không đổi tên**: bản sao lưu thật phải mang chủ sở hữu và quyền như cũ. **Không** dùng `--no-owner --no-privileges` trên bản sao lưu thật; hai cờ đó chỉ dùng khi diễn tập trên bản sao đã che quyền.
+5. Ngắt mọi kết nối còn lại vào cơ sở dữ liệu hiện tại: `psql "postgresql://<owner>:<mk>@<host>:5432/postgres" -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname IN ('<db>','creatoros_khoiphuc') AND pid <> pg_backend_pid()"`
+6. Giữ cơ sở dữ liệu hỏng để điều tra: `psql "postgresql://<owner>:<mk>@<host>:5432/postgres" -c "ALTER DATABASE <db> RENAME TO <db>_loi"`
+7. Đưa bản khôi phục vào đúng tên cũ: `psql "postgresql://<owner>:<mk>@<host>:5432/postgres" -c "ALTER DATABASE creatoros_khoiphuc RENAME TO <db>"`
+8. Chạy lại container với tag **cũ** (mục 5).
+
+Kiểm sau cùng: số migration đã chạy phải về đúng số trước khi nâng, và các bảng mới của bản vừa lùi không còn.
+Đo trên bản sao dữ liệu thật: khôi phục vào cơ sở dữ liệu mới mất khoảng 9 giây, đổi tên chưa tới 1 giây
+(sao lưu trước đó khoảng 4 giây). Số này đo trên một bản sao cỡ vài chục MB; thời gian khôi phục tăng theo cỡ
+cơ sở dữ liệu của bạn. Thời gian ngắt dịch vụ tính **từ lúc dừng ứng dụng** tới lúc container cũ lên lại.
+
+⚠️ Bản sao lưu **phải** được lấy ngay trước khi chạy migration, lúc ứng dụng đã dừng (mục 2 và 4). Sao lưu
+lấy lúc ứng dụng còn ghi thì khôi phục lại sẽ thiếu những gì ghi giữa chừng.
 
 Không có lệnh "migration ngược". Đừng tự xoá bảng hay cột để "trả lại như cũ" — cấu trúc lệch khỏi lịch sử
 migration thì lần nâng cấp sau sẽ hỏng.

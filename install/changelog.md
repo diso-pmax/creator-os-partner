@@ -39,6 +39,25 @@ có gì thì ghi *"không"*, đừng bỏ trống:
 
 Không đổi.
 
+## v1.3.0-rc.4 — 2026-10-11
+
+Nâng từ v1.3.0-rc.3. **Không có migration mới** và không có biến môi trường mới: bản này không đổi cấu trúc dữ liệu.
+
+- **Mã sản phẩm: một thay đổi nhỏ.** Nhãn đơn vị điểm ở trang ví người chơi đổi từ vàng 300 sang vàng 100 để đủ tương phản (chuẩn AA) trên nền gradient của thẻ. Không đổi dữ liệu, không đổi hành vi.
+- **Tài liệu và ảnh hướng dẫn:** trang hướng dẫn "Reward — người chơi" có thêm ảnh ví sau đối soát và ảnh trang chủ chụp lại, và một số ảnh hướng dẫn khác được chụp lại.
+- Phần còn lại chỉ là kiểm thử nội bộ, không nằm trong image.
+- Biến môi trường: không đổi.
+- Việc phải làm tay: không.
+- **Quay lui từ v1.3.0-rc.4 về v1.3.0-rc.3: được bằng image cũ**, vì rc.4 không thêm migration. Các điều kiện quay lui xa hơn (về rc.2 hay cũ hơn) nằm ở mục *Quay lui từ v1.3.0-rc.3* ngay dưới và vẫn giữ nguyên.
+
+**Quay lui từ v1.3.0-rc.3** (ghi thêm sau khi cắt rc.3; áp dụng cho image rc.3 và các bản sau)
+
+- 🔴 **KHÔNG quay lui về v1.3.0-rc.2 (hay cũ hơn) bằng image cũ một khi rc.3 đã chạy.** Migration `20261009120000_5130_link_public_code` thêm cột `public_code` của bảng `program_link_public_refs` và đặt `NOT NULL`, không có giá trị mặc định; mỗi dòng cũ được điền sẵn một mã NGẪU NHIÊN 12 ký tự. Image rc.2 không biết cột này, nên khi tạo liên kết chương trình MỚI, cơ sở dữ liệu từ chối bản ghi. Các chức năng khác của rc.2 vẫn chạy; chỉ việc tạo liên kết chương trình mới là hỏng. Cần quay lui thì báo đội phát hành trước khi đổi image.
+- 🟡 **Cột tiền của dòng trong đợt chốt điểm** (migration `20261010120000_5114_settlement_kind`). Migration thêm cột `settlement_kind` (mặc định `MONEY`) cho đợt và cho dòng, và cho phép ba cột tiền của dòng (`exchange_rate_snapshot`, `money_amount`, `money_currency`) để trống ở dòng chỉ tính điểm (`POINT_ONLY`). Ở rc.3 chưa có đường nào tạo đợt `POINT_ONLY`, nên quay lui bằng image cũ vẫn an toàn: mọi dòng hiện có là `MONEY` và đủ cột tiền. **Từ bản có đường tạo đợt `POINT_ONLY` thì không còn như vậy**; xem mục quay lui của bản đó.
+- 🟡 **Ràng buộc mới trên bảng chủ hoa hồng của đơn** (migration `20261008111100_4784_native_commission_owner`). Migration thêm hai cột nguồn (`sales_commitment_id`, `native_commitment_id`) và ràng buộc kiểm `commission_typed_lineage` trên bảng `commerce_order_commission_owners`. **Chưa kiểm** image cũ có ghi qua được ràng buộc này hay không; nếu cần quay lui, báo đội phát hành trước khi nâng.
+- Biến môi trường: không đổi.
+- 🔴 **PHẢI LÀM — Cài đặt, mục *Quay lui* ([upgrade.md](upgrade.md) mục 7):** lệnh `pg_restore --clean --if-exists` ghi ở các bản trước **không dùng được** để quay lui sau khi đã nâng nhiều bản một lúc: nó không xoá hết đối tượng của bản mới, báo lỗi giữa chừng và nạp thêm một lần nữa vào các bảng tiền, điểm (dữ liệu bị nhân đôi). Cách đúng: **khôi phục bản sao lưu vào cơ sở dữ liệu MỚI rồi đổi tên** (từng bước ở mục 7). Bản sao lưu phải lấy ngay trước migration, lúc ứng dụng đã dừng.
+
 ## v1.3.0-rc.3 — 2026-10-10
 
 Nâng từ v1.3.0-rc.2. **Có migration mới** (mười sáu, chạy bằng tài khoản migration như mọi lần; xem mục 4 và 4e của [upgrade.md](upgrade.md)). Tên thư mục trong `db/prisma/migrations/`, theo thứ tự chạy:
