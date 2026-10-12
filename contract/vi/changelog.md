@@ -25,6 +25,20 @@ tìm ra.
 
 Không đổi.
 
+## v1.3.0 — 2026-10-12
+
+Nâng từ v1.0.6 (hoặc bản bất kỳ trước v1.3.0): đọc mục này, rồi các mục chi tiết `v1.3.0-rc.*`, `v1.2.0-rc.*`, `v1.1.0`, `v1.0.7` bên dưới (giữ nguyên). Tóm tắt mọi thay đổi hợp đồng từ v1.0.6:
+
+🔴 **PHÁ VỠ — bảng kê tất toán (`.xlsx`) có thêm cột `Mã người chơi (đối tác)` làm cột 4**; mọi cột sau dịch sang phải một ô. Đọc theo vị trí thì phải cập nhật bộ đọc (chi tiết ở `v1.2.0-rc.1`).
+🔴 **Hai quyền lợi mới cho đơn tại brand tài trợ** đọc field `brandCode` của sự kiện `ORDER_*`: chiến dịch dùng brand tài trợ thì phải gửi field này (`v1.1.0`).
+🟡 **Endpoint recovery phải là HTTPS công khai** (`v1.1.0`). `externalUserId` khi launch không được chứa ký tự điều khiển, vi phạm bị `400 validation_error` (`v1.2.0-rc.1`). Schema `SettlementPacket.json` nay MỞ (`additionalProperties: true`) và mỗi thông báo tất toán mang `campaignId`; bên nhận kiểm chặt bằng bản sao schema cũ phải cập nhật hoặc bỏ qua trường lạ (`v1.2.0-rc.3`). `settlementRef` là mốc cuối kỳ đã chốt, không phải "chiến dịch, kỳ, mệnh giá" (`v1.2.0-rc.3`).
+🟢 **Cộng thêm:** `segments` ở `POST /campaigns/{campaignId}/launch` (đợi Diso báo đã bật cho môi trường của bạn); tài liệu tất toán điểm và `externalUserId` trong thân tất toán; `POST /integrations/settlement/test` ở sân sandbox; `POST /integrations/events/batch` (gửi theo lô, mặc định tắt theo từng tích hợp); đọc kết quả sau `200` (`processing[]` và các mã `settlement_item_not_found`, `settlement_batch_not_confirmed`, `settlement_item_already_confirmed`, `external_payment_amount_drifted`, `external_payment_amount_missing`); `openapi.yaml`, JSON Schema và bộ request Bruno/Postman; bộ nhận tất toán tham chiếu, bộ hợp chuẩn có ca `SETTLEMENT-*`; Program Link 1.0; checklist lên thật `go-live.md`; bộ nhận chấp nhận nhiều secret khi xoay khoá.
+🟢 **Mới ở bản này:** khi kho bí mật của chúng tôi tạm thời không phản hồi, hai cổng vẫn trả `500` như đã công bố và nay **có thêm** `code: "secret_store_unavailable"` kèm header `Retry-After` (cổng nạp bù/phục hồi và cửa gửi thử sandbox); hợp đồng đối tác không đổi, vẫn gửi lại có backoff.
+
+## v1.3.0-rc.4 — 2026-10-11
+
+🟢 **Mới: `code: "secret_store_unavailable"` và header `Retry-After` ở hai câu trả lời.** Khi kho bí mật của chúng tôi tạm thời không phản hồi, hai cổng vẫn trả `500` đúng như đã công bố ("lỗi nền tảng, gửi lại có backoff"), và câu trả lời nay **có thêm** mã `secret_store_unavailable` cùng header `Retry-After`: câu trả lời năng lực phục hồi ([recovery.md](./recovery.md)) và route gửi thử của sandbox ([testing.md §1.7](./testing.md)). Thuần cộng thêm: mã không đọc mã hay header mới chạy như cũ. Cổng nhận sự kiện và cổng chiến dịch (launch) trả lời y như trước.
+
 ## v1.3.0-rc.1 — 2026-10-08
 
 🟢 **Mới: `segments` ở `POST /campaigns/{campaignId}/launch`.** Một mảng tuỳ chọn các slug nhóm người chơi (xem [campaign-launch.md §4.1a](./campaign-launch.md#41a-nhóm-người-chơi-segments)). Thuần cộng thêm: thân không có trường này chạy y như cũ. **Đừng gửi cho tới khi Diso báo đã bật cho môi trường của bạn**: trước đó thân lời gọi chặt và một lời gọi có `segments` bị `400`, đó là hành vi đúng. Khi đã bật: mỗi slug phải đúng khuôn, sai một phần tử là `400` cả lời gọi (không có vé), tối đa 10 slug khác nhau mỗi lần, slug mà Diso chưa khai cho tích hợp của bạn **không** làm hỏng launch (chỉ là không được gắn), nhóm chỉ cộng thêm, và một người chơi mang tối đa 30 nhóm. Chữ ký và vector kiểm không đổi; `CreateLaunch.json` và `openapi.yaml` có thêm trường. [campaign-launch.md §4.1a](./campaign-launch.md#41a-nhóm-người-chơi-segments) còn có thân lời gọi ký mẫu, thân `400` đúng như thật, và lưu ý phản hồi `200` không cho biết nhóm nào được gắn; `400` nay có trong bảng mã lỗi của kênh launch.

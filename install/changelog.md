@@ -39,15 +39,94 @@ có gì thì ghi *"không"*, đừng bỏ trống:
 
 Không đổi.
 
+## v1.3.0 — 2026-10-12
+
+**Nâng THẲNG từ v1.0.6 lên v1.3.0.** Mục này **cộng dồn** mọi việc người nâng từ v1.0.6 phải làm: bỏ qua v1.0.7, v1.1.0, v1.2.0 và các bản `-rc` đã phát hành trước đó, làm theo một mục này là đủ. Các mục `v1.3.0-rc.*`, `v1.2.0-rc.*`, `v1.1.0`, `v1.0.7` bên dưới giữ nguyên để tra từng thay đổi.
+
+- **229 migration mới** (218 ở v1.0.6, 447 sau khi nâng), chạy MỘT lần bằng image v1.3.0 với tài khoản migration, xem mục 4 và 4e của [upgrade.md](upgrade.md).
+- **Không quay lui được bằng image cũ** một khi migration đã chạy: đường quay lui duy nhất là khôi phục bản sao lưu vào một cơ sở dữ liệu MỚI (mục *Quay lui* cuối mục này).
+- Có **một biến môi trường mới bắt buộc** (`INTERNAL_API_SECRET`), **hai biến phải bỏ** (`DEV_FIXED_OTP`, `PARTNER_SANDBOX_ENABLED`), **sáu biến URL phải đổi đuôi** và một biến đổi cách đọc (`PLATFORM_BASE_DOMAINS`): bảng đầy đủ ở *Biến môi trường* bên dưới.
+
+### Làm theo thứ tự
+
+**A. Trước khi nâng (dịch vụ còn chạy)**
+
+1. 🔴 **Hai vai cơ sở dữ liệu đúng tên** (từ v1.1.0): `creator_os_app` cho `DATABASE_URL`, `creator_os_worker` cho `DATABASE_URL_WORKER`, không phải tài khoản superuser. Migration chỉ cấp quyền cho đúng hai tên này; tên khác thì migration vẫn báo xong mà ứng dụng thiếu quyền ở mọi bảng, và đổi tên sau không làm migration chạy lại. Kiểm bằng tài khoản migration: `SELECT rolname, rolsuper, rolbypassrls FROM pg_roles WHERE rolname IN ('creator_os_app','creator_os_worker') ORDER BY 1` phải ra đúng 2 dòng, `rolsuper = f`. Cấp quyền dùng schema: `GRANT USAGE ON SCHEMA creator_os TO creator_os_app, creator_os_worker`. Đang dùng tên khác thì đổi tên **trước** khi migrate (mục 4 của [upgrade.md](upgrade.md)).
+2. 🔴 **Tài khoản migration có `BYPASSRLS` và là CHỦ của mọi bảng trong schema `creator_os`** (mục 4d và 4e của [upgrade.md](upgrade.md)). Thiếu `BYPASSRLS` thì migration dừng giữa chừng ở migration `3540` khi cơ sở dữ liệu đã chạy dở. Kiểm: `SELECT rolbypassrls FROM pg_roles WHERE rolname = current_user` ra `t`, và `SELECT tableowner, count(*) FROM pg_tables WHERE schemaname='creator_os' GROUP BY 1` ra đúng MỘT dòng, là tài khoản migration. Mọi lần chạy migration phải dùng cùng tài khoản này.
+3. 🔴 **Không có hai đợt chốt kỳ `PENDING` cho cùng (đơn vị, chiến dịch, mệnh giá)** (migration `20261004100000_4645_one_pending_batch_per_pair` từ chối chạy, lúc đó ứng dụng đã dừng). Đếm bằng tài khoản `BYPASSRLS` (tài khoản thường bị che, ra `0` sai): `SELECT count(*) FROM (SELECT tenant_id, campaign_id, denomination_code FROM creator_os.point_settlement_batches WHERE status = 'PENDING' GROUP BY 1,2,3 HAVING count(*) > 1) d` phải ra `0`. Lớn hơn 0: vận hành huỷ hoặc xác nhận đợt thừa trên màn Chốt kỳ điểm (quyết định nghiệp vụ), rồi đếm lại.
+4. 🔴 **Không có dòng chốt kỳ vi phạm ràng buộc mới** (migration `20261010120000_5114_settlement_kind` từ chối chạy): `SELECT count(*) FROM creator_os.point_settlement_items WHERE exchange_rate_snapshot <= 0 OR money_amount < 0 OR money_currency !~ '^[A-Z]{3}$'` phải ra `0`. Khác 0: **dừng**, báo hỗ trợ, không tự `UPDATE`.
+5. 🔴 **Không có tích hợp nào mang từ 2 namespace DIRECT khác nhau**: Launch nay từ chối tích hợp như vậy. Có thì liên hệ hỗ trợ (mục 8 của [upgrade.md](upgrade.md)) **trước** khi nâng.
+6. 🔴 **`.env` qua được kiểm của image v1.3.0**, sau khi sửa theo bảng *Biến môi trường* bên dưới: `docker run --rm --network none --env-file .env --entrypoint sh <registry>:v1.3.0 -c 'cd /repo && pnpm --filter @app/api preflight:env'; echo $?` phải ra mã `0` kèm dòng `OK: required variables present, no forbidden setting`. Mã `1`: thiếu `JWT_SECRET` hoặc `INTERNAL_API_SECRET`; mã `2` hoặc `3`: còn `DEV_FIXED_OTP`, `AUTH_PROVIDER_MODE=mock` hoặc `PARTNER_SANDBOX_ENABLED`; mã `4` đến `7`: `PLATFORM_BASE_DOMAINS` sai khuôn.
+7. 🔴 **Triển khai:** image chỉ mở **một cổng**, router `8080`: đổi cổng publish trong compose sang `8080`, proxy phía trước chỉ còn **một** `proxy_pass`. **Nếu trước đây mỗi portal một tên miền, không tiền tố** (Reward ở một tên miền, Console ở tên miền khác): mọi portal nay chạy dưới đường dẫn con (`/reward`, `/console`, `/creator`, hằng số trong mã, không cấu hình được), nên nginx ngoài phải `proxy_pass` về router `8080` **và** 308 đường dẫn cũ sang tiền tố theo TỪNG tên miền, giữ query (`return 308 /reward$request_uri;`), loại trừ `/.well-known/acme-challenge/` khỏi 308. Router trong image KHÔNG phân biệt tên miền: đường dẫn trần bị nó đẩy sang `/creator`, sai portal. `RUN_WORKER=true` ở **đúng MỘT** container (thiếu thì không ai chạy job mà không báo gì; thừa thì job chạy đôi). API và worker dùng chung nguồn giờ NTP.
+8. 🔴 **License giữ nguyên:** `LICENSE_KEY` và `DEPLOYMENT_ID` không đổi và còn hiệu lực với bản mới (image bản phát hành kiểm license; license hỏng thì cụm Reward tắt, không có lỗi nào báo).
+9. 🟡 `pg_dump` và `pg_restore` cùng bậc chính với PostgreSQL đang chạy (khác bậc thì bản sao lưu không khôi phục được). Lệch thì dùng công cụ trong image `postgres:<bậc chính>`.
+
+**B. Trong lúc nâng**
+
+10. **Dừng API và worker** TRƯỚC khi sao lưu và migrate (không để ghi xen giữa; sau migrate image cũ không chạy được).
+11. **Sao lưu NGAY trước migrate, cất ngoài máy chủ ứng dụng:** `pg_dump --format=custom --file=<thư mục>/creatoros-truoc-v1.3.0-<ngày-giờ>.dump "<chuỗi kết nối migrate>"` (bỏ đuôi `?schema=creator_os`). Ghi lại số migration đã chạy: `SELECT count(*) FROM creator_os._prisma_migrations WHERE finished_at IS NOT NULL` (v1.0.6 ra `218`). Giữ tệp ít nhất một tuần sau khi v1.3.0 chạy ổn.
+12. **Migrate bằng image v1.3.0:** `docker run --rm --env-file .env --entrypoint sh <registry>:v1.3.0 -c 'cd /repo && DATABASE_URL="$DATABASE_URL_MIGRATE" pnpm --filter @app/db exec prisma migrate deploy'` phải in `All migrations have been successfully applied`, không dòng `Error`; tổng **447** migration. Lỗi giữa chừng: **dừng**, giữ nguyên output, không chạy lại bừa; muốn lùi thì theo mục *Quay lui*.
+13. Khởi động API và worker bằng image v1.3.0.
+
+**C. Sau khi nâng**
+
+14. **Đúng bản, sẵn sàng, worker chạy:** `GET /api/v1/version` ra `gitBranch` là `v1.3.0`; `GET /api/v1/health/ready` ra `200` trong 3 phút; tiến trình worker chạy. Quá 3 phút không `200` thì theo mục *Quay lui*.
+15. **Cờ theo đơn vị:** `reconciliation-confirmation` **mặc định BẬT** (ops phải tích *đã đối chiếu bảng kê* trước khi Xác nhận chốt kỳ; đợt lập trước khi nâng không bị đòi). Bảng xếp hạng người chơi Reward **luôn bật** ở mọi đơn vị: không còn cờ `leaderboard-reward-player`, không phải bật gì trong bước nâng.
+16. **Quyền mới `point_settlement:confirm_reconciliation`** chỉ được gán tự động cho vai đang giữ quyền xác nhận chốt kỳ lúc nâng. Vai tạo **sau** nâng bản, hoặc được cấp quyền chốt kỳ sau đó, **không tự có**: quản trị đơn vị cấp thêm, nếu không người đó kẹt ở bước chốt.
+17. **Nhóm người chơi do đội nền tảng khai hộ ở v1.3.0.** Vai của đơn vị chưa tự khai được nhóm người chơi; nhóm mà đối tác gửi lúc launch (ví dụ cho một mùa chạy) phải được người có quyền nền tảng khai cho đúng cổng nhận sự kiện của đối tác **trước** khi ops đơn vị dựng bảng xếp hạng dùng nhóm đó. Ô Phân khúc ở màn tạo bảng xếp hạng chỉ liệt kê nhóm đã khai.
+18. 🔴 **Kiểm tên miền riêng cũ nằm dưới tên miền gốc** (`PLATFORM_BASE_DOMAINS`) theo mục 6b của [upgrade.md](upgrade.md), SAU khi bản này đã chạy: bản trước v1.2.0-rc.2 cho một đơn vị thêm tên miền riêng bằng hoặc dưới tên miền gốc mà không cần chứng minh. Chỉ đọc; gặp `HIJACK_TENANT_ROW_ON_OTHER_TENANT_SLUG` thì người quản trị nền tảng gỡ dòng đó, và chỉ gỡ SAU khi bản này đã chạy.
+19. **Kiểm khói phía người dùng:** ops đăng nhập Console; người chơi mở portal reward, ví và lịch sử điểm hiện đúng, số dư khớp lúc trước khi nâng.
+
+### Biến môi trường (cộng dồn từ v1.0.6)
+
+| | Biến | Việc phải làm |
+|---|---|---|
+| 🔴 | `INTERNAL_API_SECRET` | **MỚI, bắt buộc.** Thiếu thì API từ chối khởi động. Tự sinh: `openssl rand -hex 32`. Đặt cho container `api`; nếu dùng tên miền riêng, thêm header `X-Internal-Secret: <cùng giá trị>` vào lệnh `--deploy-hook` của certbot |
+| 🔴 | `DEV_FIXED_OTP` | **Cấm ngoài develop**: còn đặt mà `APP_ENV` khác `develop` thì API từ chối khởi động. Production để trống hoặc gỡ |
+| 🔴 | `PARTNER_SANDBOX_ENABLED` | Chỉ dùng ở sân thử (`APP_ENV` là `develop` hoặc `staging`); bản phát hành **cấm**: container từ chối khởi động nếu đặt |
+| 🔴 | `REWARD_PORTAL_URL` | Phải kết thúc `/reward` |
+| 🔴 | `CONSOLE_PORTAL_URL` · `APP_ORIGIN` · `OAUTH_PLATFORM_LANDING_ORIGIN` | Phải kết thúc `/console` |
+| 🔴 | `CREATOR_PORTAL_URL` · `CREATOR_PORTAL_ORIGIN` | Phải kết thúc `/creator` |
+| 🔴 | `PLATFORM_BASE_DOMAINS` | Danh sách **tên máy chủ trần** (từ hai nhãn trở lên) cách nhau bằng dấu phẩy, ví dụ `portal.example.com`; không `https://`, không dấu chấm đầu hoặc cuối, không `*.`, không `:cổng`, không đường dẫn. Giá trị chỉ cần dọn nay được tự chuẩn hoá và in cảnh báo lúc khởi động; **ở production, đặt mà không còn phần tử dùng được thì ứng dụng KHÔNG khởi động** (để trống hoặc không đặt vẫn hợp lệ). Hai tên miền gốc chồng nhau thì host khớp tên **dài nhất** |
+| 🔴 | `REWARD_DRIFT_SWEEP_INTERVAL_MS` | **Không còn được đọc**: gỡ khỏi cấu hình. Thay bằng `REWARD_DRIFT_SWEEP_HOUR_VN` (giờ Việt Nam trong ngày, mặc định `2`) và `REWARD_DRIFT_CHECK_INTERVAL_MS` (nhịp kiểm, mặc định 5 phút): mỗi ngày MỘT lượt quét đối soát vào giờ cố định |
+| 🔴 | `NOTIFICATION_MODE` | Không để `console` ở production (thông báo thật bị tắt mà không báo) |
+| 🟡 | `PROGRAM_LINK_PUBLIC_BASE_URL` | **MỚI.** Địa chỉ công khai của API (https), dùng để tạo link chia sẻ chương trình và link chia sẻ Storefront. Thiếu thì tạo link trả `503` mã `LINK_PUBLIC_URL_UNAVAILABLE`; API vẫn khởi động. Đặt nếu dùng tính năng link |
+| 🟡 | `RUN_PARTNER_SALE` · `RUN_STOREFRONT` · `RUN_ROUTER` | **Mặc định BẬT.** Bản chỉ chạy Reward có thể cần tắt nếu không dùng các phần đó |
+| 🟡 | `PII_REVEAL_MAX_PER_DAY` | Hạn mức xem thông tin cá nhân mỗi ngày. Không đặt hoặc để trống thì dùng mặc định 30; đã đặt thì phải là số nguyên từ 0 trở lên, giá trị sai khuôn rơi về 30 và ghi một dòng cảnh báo vào log (trước đây có thể tắt hạn mức hoặc khoá hết) |
+| 🟡 | `STOREFRONT_HOSTS` | Rỗng nghĩa là không chặn host nào (cố ý). Môi trường thật khai danh sách tên miền, phân cách bằng dấu phẩy |
+| 🟡 | `STOREFRONT_REFERRAL_COOKIE_SECRET` | Tuỳ chọn: khoá ký cookie giới thiệu từ Storefront, tối thiểu 32 ký tự. Không đặt thì dùng `JWT_SECRET` nếu đủ 32 ký tự. Đã đặt mà để rỗng hoặc ngắn hơn 32 thì `JWT_SECRET` KHÔNG được dùng thay và ghi nhận giới thiệu bị tắt (ứng dụng vẫn khởi động): hoặc xoá hẳn dòng, hoặc đặt đủ 32 ký tự |
+| 🟢 | `RECONCILIATION_RERUN_INTERVAL_MS` · `RECONCILIATION_RUN_LEASE_SEC` | **MỚI**, của worker: chu kỳ xem yêu cầu *Chạy lại đối soát* (mặc định `15000`) và thời gian giữ một lượt đối soát trước khi coi là chết (mặc định `1800`, tối thiểu `60`) |
+| 🟢 | `OPSHUB_WEBHOOK_API_KEY` · `GUIDE_ORIGIN` · `QUOTA_CHANNEL_ENRICH_PER_DAY` · `QUOTA_CHANNEL_ENRICH_TENANT_PER_DAY` · `QUOTA_CHANNEL_ENRICH_OPS_PER_DAY` | **MỚI, không bắt buộc.** Khoá nhận webhook từ OpsHub; nguồn sổ tay cho cổng bán hàng đối tác; ba hạn mức ngày có mặc định trong mã |
+| 🟢 | `AUDIENCE_GOOGLE_SA_KEY` · `EKYC_GOOGLE_SA_KEY` · `NOTIFICATION_GOOGLE_SA_KEY` · `PII_KEY_GOOGLE_SA_KEY` · `SECRETS_GOOGLE_SA_KEY` (và `*_GOOGLE_PROJECT_ID` tương ứng) | **MỚI, không bắt buộc.** Mỗi cụm có khoá riêng; thiếu thì dùng `GOOGLE_SERVICE_ACCOUNT_KEY` như v1.0.6. Cấu hình chỉ đặt biến cũ vẫn chạy |
+| 🟢 | `REWARD_SUPPORT_URL` · `REWARD_TERMS_URL` | **MỚI, tuỳ chọn**, cho webview thưởng: đường dẫn Hỗ trợ / Liên hệ và Điều khoản và quyền riêng tư. Chỉ nhận `https:`, `tel:` hoặc `mailto:`; không đặt thì mục tương ứng ở màn Cài đặt của người chơi ẩn |
+| 🟢 | Nhóm `MARKETPLACE_*` và `TIKTOK_*` | Chỉ cần khi bật kết nối sàn (mặc định tắt, `MARKETPLACE_SYNC_ENABLED`). Bật thì ở production phải đặt `MARKETPLACE_HMAC_SECRET_NAME`; `TIKTOK_SHOP_REDIRECT_URI` mặc định trỏ `http://localhost:3001/...` nên **phải đặt** lại; `TIKTOK_APP_ID`, `TIKTOK_APP_KEY`, `TIKTOK_APP_SECRET` lấy từ ứng dụng của sàn; các biến `TIKTOK_LIFECYCLE_WEBHOOK_FIXTURE_*` chỉ dành cho sân thử, để trống ở production |
+| · | `STOREFRONT_LOCAL_HTTP` | Chỉ dành cho máy phát triển; production bỏ qua, không cần đặt |
+
+Đối chiếu `.env` của bạn với `.env.example` và [reward-only.env.example](reward-only.env.example) của thẻ v1.3.0 để bắt nốt các biến không nằm trong bảng.
+
+### Quay lui
+
+- 🔴 **Từ v1.3.0 về v1.0.6: KHÔNG quay lui bằng image cũ.** Chạy `pg_restore --clean` đè lên cơ sở dữ liệu đã migrate làm bảng giao dịch điểm **nhân đôi** mà không báo lỗi, và image v1.0.6 không chạy trên schema mới. Đường duy nhất là **khôi phục bản sao lưu bước 11 vào một cơ sở dữ liệu MỚI rồi đổi tên**: (1) `CREATE DATABASE <db>_khoiphuc`; (2) `pg_restore --exit-on-error --dbname="<chuỗi kết nối migrate>/<db>_khoiphuc" <tệp bước 11>` (KHÔNG `--clean`); (3) kiểm chủ sở hữu bảng theo mục 4e của [upgrade.md](upgrade.md); (4) ngắt kết nối cả hai cơ sở dữ liệu; (5) `ALTER DATABASE <db> RENAME TO <db>_loi`; (6) `ALTER DATABASE <db>_khoiphuc RENAME TO <db>`; (7) chạy lại image v1.0.6. Số migration sau khi khôi phục phải bằng đúng giá trị ghi ở bước 11. Dữ liệu ghi sau lúc sao lưu mất.
+- 🟡 **Từ v1.3.0 về v1.3.0-rc.3 (một bước): được bằng image cũ**, vì v1.3.0 không thêm migration so với rc.3. **Bật lại cờ `leaderboard-reward-player` cho các đơn vị đang dùng bảng xếp hạng người chơi Reward TRƯỚC khi đổi image** (Hệ thống → Tính năng của đơn vị, hoặc ghi hàng `tenant_feature_flags` khoá `leaderboard-reward-player`, `enabled = true`): image cũ vẫn đòi cờ này, không bật lại thì đơn vị chưa có hàng cờ không tạo được bảng mới và bảng đang có hiển thị rỗng.
+- 🔴 **Đã có chiến dịch khai brand tài trợ theo hình bản ghi `{code, name}` (hai ô Mã và Tên) thì không lùi bằng image cũ**: image cũ chỉ đọc brand dạng chuỗi nên mọi đơn bị coi là "không thuộc brand tài trợ" và người chơi mất điểm âm thầm. Sửa tiến (vá và phát hành bản sau), đừng lùi. Chi tiết ở mục `v1.3.0-rc.2` bên dưới.
+- Quay lui xa hơn rc.3 (về rc.2 trở xuống) bằng image cũ cũng bị chặn bởi migration `20261009120000_5130_link_public_code` (cột `public_code` `NOT NULL` không giá trị mặc định): xem *Quay lui từ v1.3.0-rc.3* bên dưới.
+
 ## v1.3.0-rc.4 — 2026-10-11
 
 Nâng từ v1.3.0-rc.3. **Không có migration mới** và không có biến môi trường mới: bản này không đổi cấu trúc dữ liệu.
 
-- **Mã sản phẩm: một thay đổi nhỏ.** Nhãn đơn vị điểm ở trang ví người chơi đổi từ vàng 300 sang vàng 100 để đủ tương phản (chuẩn AA) trên nền gradient của thẻ. Không đổi dữ liệu, không đổi hành vi.
+- **Mã sản phẩm: vài thay đổi nhỏ, không đổi cấu trúc dữ liệu.**
+  - Nhãn đơn vị điểm ở trang ví người chơi đổi từ vàng 300 sang vàng 100 để đủ tương phản (chuẩn AA) trên nền gradient của thẻ.
+  - Danh sách đầy đủ của bảng xếp hạng công khai chỉ mở cho người thuộc đúng đơn vị; người khác chỉ thấy phần đã đồng ý hiển thị công khai.
+  - Thông báo và email của chiến dịch trả điểm in số kèm tên đơn vị điểm đã đặt; chiến dịch trả tiền giữ nguyên "đ".
+  - Biến `PII_REVEAL_MAX_PER_DAY` có giá trị sai khuôn (không phải số nguyên từ 0 trở lên) **không còn tắt hạn mức xem thông tin cá nhân**: hệ thống dùng mặc định 30 lượt mỗi ngày và ghi một dòng cảnh báo vào log. Giá trị hợp lệ (kể cả `0`) hoạt động như cũ. Các lượt xuất lô (mã điểm, đợt quà vật lý) có thêm thời gian chờ riêng và báo rõ khi hết hạn mức.
+- **Kho bí mật gián đoạn ngắn không còn làm cấp, cấp lại hay xoay khoá tích hợp trả lỗi 500.** Các thao tác này trả `503` mã `secret_store_unavailable` kèm `Retry-After`; không để lại hàng khoá dở, thử lại là cấp được. Lỗi quyền truy cập kho vẫn giữ nguyên lỗi kho bí mật như trước. Cổng nhận sự kiện của đối tác không đổi câu trả lời. Không đổi cấu hình, không migration.
 - **Tài liệu và ảnh hướng dẫn:** trang hướng dẫn "Reward — người chơi" có thêm ảnh ví sau đối soát và ảnh trang chủ chụp lại, và một số ảnh hướng dẫn khác được chụp lại.
+- 🟡 **Cờ theo đơn vị `leaderboard-reward-player` đã bỏ.** Bảng xếp hạng người chơi Reward nay luôn bật cho mọi đơn vị: không còn phải bật cờ này ở **Hệ thống → Tính năng** hay trong bước nâng bản. Hàng cờ đã có sẵn (bật hay tắt) vẫn nằm trong dữ liệu, vô hại, mã không đọc nó nữa. Bảng loại này đọc được công khai qua `GET /leaderboards/:defId/entries` ở mọi đơn vị. Người chưa đăng nhập và người đăng nhập đơn vị khác chỉ thấy hạng và giá trị, không có mã định danh. Dòng ở bản v1.3.0-rc.1 ghi *"mặc định không có, bật trong bước nâng bản"* không còn đúng từ bản này.
 - Phần còn lại chỉ là kiểm thử nội bộ, không nằm trong image.
 - Biến môi trường: không đổi.
-- Việc phải làm tay: không.
+- Việc phải làm tay: không (không còn phải bật cờ trong bước nâng bản).
+- 🟡 **Quay lui từ v1.3.0-rc.4 về v1.3.0-rc.3 (hoặc cũ hơn): được bằng image cũ, nhưng image cũ vẫn đòi cờ `leaderboard-reward-player`.** Đơn vị chưa có hàng cờ bật sẽ không tạo được bảng xếp hạng người chơi Reward, và bảng đang có hiển thị rỗng cho tới khi cờ được bật lại. **Trước khi quay lui, bật lại cờ ở các đơn vị đang dùng bảng này** (Hệ thống → Tính năng của đơn vị, hoặc ghi hàng `tenant_feature_flags` với khoá `leaderboard-reward-player`, `enabled = true`).
 - **Quay lui từ v1.3.0-rc.4 về v1.3.0-rc.3: được bằng image cũ**, vì rc.4 không thêm migration. Các điều kiện quay lui xa hơn (về rc.2 hay cũ hơn) nằm ở mục *Quay lui từ v1.3.0-rc.3* ngay dưới và vẫn giữ nguyên.
 
 **Quay lui từ v1.3.0-rc.3** (ghi thêm sau khi cắt rc.3; áp dụng cho image rc.3 và các bản sau)

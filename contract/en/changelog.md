@@ -24,6 +24,20 @@ such as "contract 1.4.0" still leads here.
 
 No changes.
 
+## v1.3.0 — 2026-10-12
+
+Upgrading from v1.0.6 (or any release before v1.3.0): read this section, then the detailed `v1.3.0-rc.*`, `v1.2.0-rc.*`, `v1.1.0` and `v1.0.7` sections below (kept as they are). Summary of every contract change since v1.0.6:
+
+🔴 **BREAKING — the settlement statement (`.xlsx`) has a new column `Mã người chơi (đối tác)` as column 4**; every later column moves one cell to the right. If you read the file by position, update your reader (details under `v1.2.0-rc.1`).
+🔴 **Two new benefits for orders at sponsor brands** read the `brandCode` field of `ORDER_*` events: a campaign that uses sponsor brands must send it (`v1.1.0`).
+🟡 **The recovery endpoint must be a public HTTPS address** (`v1.1.0`). `externalUserId` at launch must not contain control characters; a violation is `400 validation_error` (`v1.2.0-rc.1`). The `SettlementPacket.json` schema is now OPEN (`additionalProperties: true`) and every settlement notice carries `campaignId`; a strict receiver built from an old copy of the schema must update it or ignore unknown fields (`v1.2.0-rc.3`). `settlementRef` is the closing instant of the settled period, not "campaign, period, denomination" (`v1.2.0-rc.3`).
+🟢 **Added:** `segments` on `POST /campaigns/{campaignId}/launch` (wait until Diso confirms it is enabled for your environment); the point-settlement documentation and `externalUserId` in the settlement body; `POST /integrations/settlement/test` on the sandbox; `POST /integrations/events/batch` (batch sending, off by default per integration); reading the result after `200` (`processing[]` and the codes `settlement_item_not_found`, `settlement_batch_not_confirmed`, `settlement_item_already_confirmed`, `external_payment_amount_drifted`, `external_payment_amount_missing`); `openapi.yaml`, JSON Schemas and the Bruno/Postman request sets; a reference settlement receiver and `SETTLEMENT-*` conformance cases; Program Link 1.0; the go-live checklist `go-live.md`; a receiver that accepts several secrets during key rotation.
+🟢 **New in this release:** when our secret store is briefly unavailable, two gateways keep answering `500` exactly as published and now **also** carry `code: "secret_store_unavailable"` and a `Retry-After` header (the catch-up/recovery gateway and the sandbox test endpoint); the partner contract is unchanged, keep resending with backoff.
+
+## v1.3.0-rc.4 — 2026-10-11
+
+🟢 **New: `code: "secret_store_unavailable"` and a `Retry-After` header on two answers.** When our secret store is briefly unavailable, two gateways keep answering `500`, exactly as published ("platform error, resend with backoff"), and the answer now **also** carries the code `secret_store_unavailable` and a `Retry-After` header: the recovery capability answer ([recovery.md](./recovery.md)) and the sandbox test-send route ([testing.md §1.7](./testing.md)). Purely additive: code that does not read the new code or header runs as before. The event gateway and the campaign-launch gateway answer exactly as before.
+
 ## v1.3.0-rc.1 — 2026-10-08
 
 🟢 **New: `segments` on `POST /campaigns/{campaignId}/launch`.** An optional array of player-group slugs (see [campaign-launch.md §4.1a](./campaign-launch.md#41a-player-groups-segments)). Purely additive: a body without it behaves exactly as before. **Do not send it until Diso tells you it is on for your environment**: until then the body is strict and a call carrying `segments` is a `400`, which is the correct behavior. Once on: every slug must be well-formed or the whole call is a `400` (no ticket), at most 10 distinct slugs per call, a slug Diso has not declared for your integration does **not** fail the launch (it is simply not attached), groups only ever grow, and a player carries at most 30. The signature and the test vector do not change; `CreateLaunch.json` and `openapi.yaml` gain the field. [campaign-launch.md §4.1a](./campaign-launch.md#41a-player-groups-segments) also carries a signed example body, the exact `400` body, and the note that a `200` does not say which groups were attached; the `400` is now listed in the launch error tables.
