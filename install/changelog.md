@@ -39,6 +39,10 @@ có gì thì ghi *"không"*, đừng bỏ trống:
 
 Không đổi.
 
+## v1.3.1-rc.2 — 2026-10-15
+
+Không đổi.
+
 ## v1.3.1-rc.1 — 2026-10-15
 
 **v1.3.1-rc.1: nhóm người chơi do ĐƠN VỊ tự khai.** Nâng từ v1.3.0 lên, không cần đổi biến môi trường.
