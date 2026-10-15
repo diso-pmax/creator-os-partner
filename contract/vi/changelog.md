@@ -23,7 +23,13 @@ tìm ra.
 
 ## Chưa phát hành
 
-Không đổi.
+🟡 **ĐỔI NGHĨA — cách gửi thông báo tất toán của chiến dịch Reward (từ bản phát hành mang "Chi trả reward").** Thông báo không còn được đẩy trong một yêu cầu dài: ops của chúng tôi bấm một nút **Chi trả** và lượt chạy diễn ra **ở nền**, với nhịp mặc định **10 thông báo mỗi giây cho mỗi tích hợp** (chỉnh được theo từng đơn vị), và **tự tạm dừng sau 20 lần gửi lỗi liên tiếp** (không trả lời trong 10 giây, hoặc trả lời khác `2xx`, `409`, `422`) cho tới khi ops tiếp tục. **Thân thông báo, chữ ký và các câu trả lời chúng tôi đọc không đổi**: bộ nhận dựng theo [settlement.md](./settlement.md) vẫn chạy. Điều đổi với bạn: trả lời nhanh (dưới 10 giây), và báo chúng tôi trước khi bảo trì có kế hoạch. Mới ở settlement.md: lối đi từng bước dựng bộ nhận và lên chính thức (§7), và khuyến nghị cộng tối đa một lần cho mỗi `settlementItemId` trong sổ của bạn.
+
+## v1.4.0-rc.1 — 2026-10-15
+
+🟡 **Bổ sung cho v1.3.0:** **`GET /launch` trả lời trình duyệt của người chơi khác đi khi mã launch hỏng.** Khi yêu cầu có `Accept: text/html` (điều hướng trang bình thường) và mã không tồn tại, đã hết hạn hoặc đã dùng rồi, chúng tôi trả `302` sang màn `/entry?reason=launch_invalid` của chính game; khi năng lực chưa bật cho chiến dịch thì `302` sang `/entry?reason=launch_unavailable`. Mọi bên gọi khác (API client, curl, kiểm tra phía máy chủ của bạn, bộ conformance) vẫn nhận `401 INVALID_LAUNCH_CODE` / `403 feature_disabled` như đã công bố. Một số thư viện HTTP mặc định gửi `text/html`: hãy đặt rõ `Accept: application/json` nếu bạn gọi URL này từ máy chủ ([campaign-launch.md](./campaign-launch.md)).
+
+🟢 **CỘNG THÊM:** **câu trả lời cho một gói tất toán có thể mang kết quả (`settlement-result.v1`).** Khi câu trả lời của bạn là `200`, `application/json`, tối đa 4 KB và đúng khuôn ở [settlement.md §2.2a](./settlement.md#22a-kết-quả-ngay-trong-câu-trả-lời-tuỳ-chọn--settlement-resultv1), dòng được khép ngay: khớp khi `amountMinor` và `currency` bằng số đã đóng dấu, hoặc hiện "đối tác báo lệch" khi không bằng. Nếu bạn vẫn trả `2xx` với thân bất kỳ thì không có gì đổi: `200` trơn vẫn chỉ là "đã nhận" và kết quả vẫn về bằng `POINT_REDEEMED`. Một `redemptionRef` chỉ được ghi một lần dù đến bằng đường nào.
 
 ## v1.3.1-rc.1 — 2026-10-15
 

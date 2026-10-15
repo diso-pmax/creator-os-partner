@@ -6,7 +6,7 @@ This guide describes the implemented PROGRAM_LINK 1.0 profile. It covers externa
 
 ## 1. Endpoints and anonymous buyers
 
-Send server-to-server callbacks to `POST /api/v1/integrations/events`. The short navigation URL is `GET /l/:linkRef` (the prefixed `/api/v1/l/:linkRef` alias also exists); it redirects to the configured shop destination with tracking parameters. Fixed, pasted-URL and product links use the same callback contract. Do not call the removed `/integrations/link-conversions` endpoint.
+Send server-to-server callbacks to `POST /api/v1/integrations/events`. Both external and Storefront sources share `GET /l/:publicCode`, using a 12-character Base62 code. External links redirect to the configured shop with tracking parameters; Storefront links use the tenant’s verified custom domain or subdomain and continue to capture on that domain for referral consent and cookies. Tracking still uses the UUID `linkRef`. Existing `/l/:linkRef`, `/api/v1/l/:linkRef` and `/s/:pageCode/r/:linkRef` links remain supported. Fixed, pasted-URL and product links use the same callback contract. Do not call the removed `/integrations/link-conversions` endpoint.
 
 Campaign LAUNCH is **not** required for this Link profile. The buyer can check out without Creator-OS login. `externalUserId` may be omitted for a valid LINK_ORDER_* + PROGRAM_LINK payload. If supplied, it is your opaque buyer/session identifier, not the publisher/CTV receiving the commission. Keep it stable across retries. Do not fabricate it from link_ref, click_ref or a publisher account. Legacy Reward profiles retain their externalUserId/LAUNCH requirements.
 

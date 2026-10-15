@@ -6,7 +6,7 @@ Hướng dẫn mô tả profile PROGRAM_LINK 1.0 đã triển khai: quy công đ
 
 ## 1. Endpoint và khách không đăng nhập
 
-Callback từ server đối tác gửi `POST /api/v1/integrations/events`. URL điều hướng ngắn là `GET /l/:linkRef` (có alias `/api/v1/l/:linkRef`): redirect đến đích shop đã cấu hình và thêm tracking. Đích cố định, dán URL và link sản phẩm dùng cùng callback contract. Endpoint `/integrations/link-conversions` đã xoá.
+Callback từ server đối tác gửi `POST /api/v1/integrations/events`. URL chia sẻ của cả nguồn bên ngoài và Storefront là `GET /l/:publicCode`, với mã Base62 12 ký tự. Nguồn bên ngoài redirect đến đích shop và thêm tracking; Storefront dùng domain của đơn vị (custom domain đã xác minh hoặc subdomain), rồi chuyển tới capture trên domain đó để xử lý consent/cookie referral. `linkRef` trong tracking vẫn là UUID. Các link `/l/:linkRef`, `/api/v1/l/:linkRef` và `/s/:pageCode/r/:linkRef` đã chia sẻ vẫn hoạt động. Đích cố định, dán URL và link sản phẩm dùng cùng callback contract. Endpoint `/integrations/link-conversions` đã xoá.
 
 **Campaign LAUNCH không bắt buộc cho Link.** Buyer có thể checkout mà không đăng nhập Creator-OS. Envelope hợp lệ LINK_ORDER_* + PROGRAM_LINK cho phép bỏ `externalUserId`; nếu gửi, đó là ID opaque của buyer/session do đối tác cấp, không là CTV hưởng. Giữ nguyên qua retry; không tạo ID từ click_ref/link_ref/CTV. Legacy Reward vẫn giữ yêu cầu externalUserId/LAUNCH của luồng đó.
 

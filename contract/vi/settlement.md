@@ -15,10 +15,11 @@ khép lại ở phía chúng tôi.
 
 ## 1. Năng lực này làm gì
 
-Khác [recovery.md](./recovery.md) (chiều đó CHỈ ĐỌC, bạn gọi chúng tôi), đây là chiều **GHI**: ops của
-chúng tôi bấm nút trên màn vận hành, chúng tôi **chủ động gọi sang bạn**, báo một khoản điểm của một
-người dùng đã **chốt kỳ xong** (điểm đã rời ví tạm, sang trạng thái sẵn sàng bàn giao) và cần bạn xử lý
-phía bạn.
+Khác [recovery.md](./recovery.md) (chiều đó CHỈ ĐỌC, bạn gọi chúng tôi), đây là chiều **GHI**: sau khi đơn vị
+đã xác nhận đối soát và chốt kỳ điểm (điểm chuyển **một lần**, ở bước đó, sang trạng thái chờ chi trả), ops
+của chúng tôi tạo một đợt chi trả rồi bấm **Chi trả**. Khi đó chúng tôi **chủ động gọi sang bạn**, mỗi dòng
+một thông báo, báo một khoản điểm của một người dùng đã sẵn sàng bàn giao và cần bạn xử lý phía bạn.
+**Chi trả chỉ gửi**: không chuyển điểm lần thứ hai.
 
 🔴 **Đây KHÔNG phải một lệnh chuyển tiền/điểm.** Nó là một THÔNG BÁO — "khoản này đã chốt, xin xử lý
 phía bạn". Bạn tự quyết định làm gì với thông báo đó (cộng ví nội bộ, quy đổi, ghi nhận nợ…).
@@ -29,7 +30,7 @@ phía bạn". Bạn tự quyết định làm gì với thông báo đó (cộng
 
 1. **Bạn** đưa cho ops của chúng tôi một URL (địa chỉ nhận `POST` của chúng tôi).
 2. **Ops của chúng tôi** nhập nó trên màn tích hợp của bạn, ở tab **Nhận điểm**. Khi chưa nhập, nút
-   **Gửi** của ops bị khoá và ghi rõ vì sao — không có cách nào ép gọi.
+   **Chi trả** của ops bị khoá và ghi rõ vì sao — không có cách nào ép gọi.
 3. Địa chỉ phải là `https://` trên Internet công khai. Chúng tôi từ chối địa chỉ trỏ vào `localhost`,
    mạng riêng hay địa chỉ link-local, và địa chỉ có `user:mật-khẩu` trong đó (bí mật không nằm trong
    địa chỉ).
@@ -44,7 +45,7 @@ Màn chỉ hiện **Sẵn sàng gửi điểm** khi đủ cả bốn điều ki�
 | có **khoá SETTLEMENT dùng được** | lượt gọi được ký bằng nó (§3) |
 | tích hợp có **đúng một** nhà cấp danh tính ở các nguồn sự kiện `DIRECT` | chúng tôi phải biết `externalUserId` thuộc không gian định danh nào của bạn |
 
-Điều kiện nào thiếu sẽ hiện kèm lý do ngay cạnh nút **Gửi**.
+Điều kiện nào thiếu sẽ hiện kèm lý do ngay cạnh nút **Chi trả**.
 
 ### 2.1 Thân request
 
@@ -66,7 +67,7 @@ Màn chỉ hiện **Sẵn sàng gửi điểm** khi đủ cả bốn điều ki�
 
 - **`externalUserId` là trường để bạn cộng điểm theo.** Đó là mã **bạn** đã đưa chúng tôi cho người dùng
   này. Chúng tôi không bao giờ gửi gói thiếu nó: khi không đọc được chính xác cho một dòng (không có,
-  hoặc có nhiều hơn một), thao tác **Gửi** bị từ chối ở phía chúng tôi và không có gì tới chỗ bạn.
+  hoặc có nhiều hơn một), thao tác **Chi trả** từ chối dòng đó ở phía chúng tôi và không có gì tới chỗ bạn.
 - **`campaignId` cho bạn biết khoản tiền thuộc chiến dịch nào.** Một đợt chỉ tất toán đúng một chiến dịch,
   nên mọi dòng của một đợt mang cùng `campaignId`: mã của chiến dịch đó phía chúng tôi (cùng mã bạn dùng
   trong đường dẫn launch, `POST /campaigns/:campaignId/launch`). Chúng tôi gửi nó ở mọi gói. Trong schema
@@ -97,7 +98,7 @@ Màn chỉ hiện **Sẵn sàng gửi điểm** khi đủ cả bốn điều ki�
 | `409` | **từ chối** — bạn báo đã thấy `deliveryNonce` này rồi (§4). **Chỉ dùng `409` cho đúng việc này** |
 | `422` | **từ chối** — bạn không nhận gói vì lý do nghiệp vụ |
 | mã khác — `400` · `401` · `403` · `404` · `5xx` | **gửi hỏng** — ops của chúng tôi có thể gửi lại |
-| không trả lời trong **10 giây** | **gửi hỏng** — ops của chúng tôi có thể gửi lại |
+| không trả lời trong **10 giây** | **gửi hỏng, chưa biết câu trả lời** — chúng tôi không gửi thông báo mới cho dòng này; ops của chúng tôi hỏi lại với cùng `deliveryNonce` (§4) |
 | chuyển hướng `3xx` | **gửi hỏng** — chúng tôi không bao giờ đi theo chuyển hướng |
 
 - `401`/`403` (kiểm khoá phía bạn thất bại) là một lượt gửi hỏng bình thường ở phía chúng tôi — ops có thể
@@ -106,8 +107,58 @@ Màn chỉ hiện **Sẵn sàng gửi điểm** khi đủ cả bốn điều ki�
   tôi gửi lại *cùng* gói với *cùng* nonce và đọc `409` là "đối tác đã có rồi" (§4). Một `409` vì lý do
   khác sẽ khiến chúng tôi đánh dấu là đã nhận một dòng mà bạn chưa hề xử lý.
 - `2xx` nghĩa là "bạn đã nhận" — không phải "bạn đã xử lý xong". Cứ từ từ sau khi trả lời.
-- **Khép dòng là việc của bạn:** một dòng chỉ khép khi bạn gửi `POINT_REDEEMED` cho chúng tôi (§5) — hoặc khi
-  ops của chúng tôi ghi nhận thanh toán bằng tay.
+- **Khép dòng là việc của bạn:** một dòng khép khi bạn báo đã trả — bằng `POINT_REDEEMED` (§5), hoặc, nếu bạn đã biết kết quả lúc trả lời, ngay trong câu trả lời (§2.2a). Đó là cùng một cổng: chỉ ghi một lần theo `redemptionRef`.
+- Một dòng cũng có thể được **đóng mà không có báo cáo của bạn**: khi đơn vị đã ghi nhận khoản đó được chi trả bằng một kênh khác, chúng tôi đóng dòng và không gửi lại gói cho dòng đó nữa. Một dòng chỉ được trả một lần, nên báo cáo đến sau cho dòng đã đóng không làm trừ điểm lần hai.
+- Kết quả cũng có thể về ngay trong câu trả lời: xem §2.2a. `200` trơn **không** phải kết quả.
+
+### 2.2a Kết quả ngay trong câu trả lời (tuỳ chọn) — `settlement-result.v1`
+
+Nếu bạn đã biết kết quả lúc trả lời, bạn có thể nói **ngay trong câu trả lời**, để dòng khép mà không cần lần
+gọi thứ hai. Nó chỉ được tính khi câu trả lời **đúng khuôn này**. Riêng mã `200` thì không: `200` trơn, thân
+rỗng, thân khác khuôn hoặc thân quá 4 KB chỉ là **"đã nhận"** (§2.2), và kết quả vẫn về bằng
+`POINT_REDEEMED` (§5), đúng như trước.
+
+```jsonc
+// HTTP 200, Content-Type: application/json, thân ≤ 4 KB
+{
+  "schemaVersion":    "settlement-result.v1",
+  "result":           "PAID",                       // v1 chỉ có giá trị này
+  "deliveryNonce":    "…",                          // CHÉP NGUYÊN VĂN từ gói bạn vừa nhận
+  "settlementItemId": "…",                          // CHÉP NGUYÊN VĂN từ gói
+  "redemptionRef":    "PAYOUT-88213",               // mã lượt trả CỦA BẠN, 1–128 ký tự, duy nhất
+  "amountMinor":      1000,                         // số nguyên, số bạn đã trả theo đơn vị nhỏ nhất (VND × 1)
+  "currency":         "VND",                        // 3 chữ cái, tiền tệ của gói
+  "paidAt":           "2026-11-05T07:30:12.000Z"    // ISO 8601 UTC, lúc bạn trả; không muộn hơn 5 phút so với lúc chúng tôi nhận
+}
+```
+
+**Chỉ chính thức khi ĐỦ TẤT CẢ** (thiếu một điều thì chỉ là "đã nhận"):
+
+1. mã trả lời đúng `200`, kiểu nội dung `application/json`, thân tối đa **4 KB** và là JSON hợp lệ;
+2. đủ bảy trường, đúng kiểu (`amountMinor` số nguyên, `paidAt` là giờ UTC ISO 8601 kết thúc bằng `Z`, `redemptionRef` 1–128 ký tự). Trường chúng tôi không biết thì bỏ qua;
+3. `schemaVersion` là `settlement-result.v1` và `result` là `PAID`;
+4. `deliveryNonce` và `settlementItemId` là **của đúng gói chúng tôi vừa gửi** (buộc câu trả lời vào lượt gửi này; câu trả lời cũ không dùng lại được cho dòng khác).
+
+**Rồi chúng tôi so số**, bằng đúng phép kiểm áp cho `POINT_REDEEMED`:
+
+| Bạn trả lời | Chúng tôi làm gì |
+|---|---|
+| đúng khuôn, `amountMinor` và `currency` **bằng** số đã đóng dấu của dòng, dòng còn nhận được | dòng **khớp** ngay và điểm được đánh dấu đã trả, **một lần**, theo `redemptionRef` |
+| đúng khuôn, nhưng số tiền hoặc tiền tệ **lệch** | dòng hiện **"đối tác báo lệch"**. Không ghi gì; ops của chúng tôi và bạn đối chiếu |
+| đúng khuôn, nhưng dòng không còn nhận kết quả (đã xác nhận bằng mã khác, đã bị loại, đợt chưa xác nhận) | dòng không đổi; chỉ là "đã nhận" |
+| mọi trường hợp khác (xem trên) | chỉ **"đã nhận"**; chờ `POINT_REDEEMED` |
+
+- **Một lượt trả, một bản ghi.** Nếu bạn trả lời có kết quả **và** sau đó gửi `POINT_REDEEMED` với **cùng**
+  `redemptionRef`, nó chỉ được ghi một lần; lần sau nhận câu "đã ghi rồi". `redemptionRef` **khác** cho cùng
+  một dòng thì bị từ chối: một dòng chỉ được trả một lần.
+- **Hỏi lại.** Thao tác *Hỏi lại đối tác* gửi lại cùng gói với cùng `deliveryNonce`. Nếu bạn đã thấy nó,
+  trả `409` (§4); **thân của `409` bị bỏ qua**, kết quả về bằng `POINT_REDEEMED`.
+- **Câu trả lời không có chữ ký riêng.** Chúng tôi bảo vệ bằng cách chỉ gọi tới địa chỉ `https://` bạn đã
+  khai, không bao giờ đi theo chuyển hướng, và buộc câu trả lời vào gói qua `deliveryNonce` và
+  `settlementItemId`. Chúng tôi giữ mã băm SHA-256 của thân và `redemptionRef` của bạn trong nhật ký kiểm
+  toán, không giữ chính thân.
+- ⚠️ `2xx` vẫn chỉ nghĩa là "đã nhận". Chỉ khuôn trên mới nghĩa là "đã trả". Đừng ghi `result: "PAID"` trong
+  câu trả lời cho một dòng bạn chưa trả.
 
 ## 3. Chúng tôi tự xác thực với bạn — `PartnerSettlementSignatureV1`
 
@@ -134,7 +185,7 @@ signature      = "sha256=" + hex_viết_thường( HMAC-SHA256( SETTLEMENT_SECRE
 
 **Xoay khoá.** Khoá SETTLEMENT là khoá dẫn xuất ([credential-derivation.md](./credential-derivation.md)). `X-Platform-Key-Id` **không đổi**
 khi chúng tôi xoay, và ngay khi một lượt xoay xong thì **chúng tôi ký bằng khoá mới**. Vì vậy: hẹn ngày với ops của chúng tôi;
-dẫn xuất và nạp phiên bản mới **trước** khi lượt xoay hoàn tất, và dù sao cũng trước khi ops của chúng tôi bấm **Gửi** lần kế (luôn là phiên bản hiện tại cộng một); chấp nhận **cả hai**
+dẫn xuất và nạp phiên bản mới **trước** khi lượt xoay hoàn tất, và dù sao cũng trước khi ops của chúng tôi bấm **Chi trả** hoặc **Gửi lại** lần kế (luôn là phiên bản hiện tại cộng một); chấp nhận **cả hai**
 secret và thử mới trước; chỉ bỏ cái cũ sau khi chúng tôi báo nó đã bị thu hồi. Nếu khoá mới chưa kịp nạp, lượt gửi của chúng tôi
 trả `401` trong một lúc ngắn: hãy nạp khoá mới rồi nhờ ops của chúng tôi gửi lại — đó là một lượt gửi hỏng, không mất khoản tất toán nào.
 Bộ nhận tham chiếu nhận nhiều secret cho một mã khoá (`SETTLEMENT_SECRETS=<mới>,<cũ>`, xem [testing.md §1.6](./testing.md#16-kênh-settlement--8-ca-chạy-riêng)).
@@ -185,7 +236,7 @@ thân request (§2.1) là cơ chế bù cho khoảng trống đó, và nó đòi
 
 | Ops của chúng tôi bấm | Nonce | Để làm gì |
 |---|---|---|
-| **Gửi** (lần đầu) hoặc **Gửi lại** (sau một lượt gửi hỏng) | nonce **MỚI** | một thông báo mới. Cùng `settlementItemId` có thể xuất hiện trong nhiều request, mỗi cái một nonce |
+| **Chi trả** (lần đầu) hoặc **Gửi lại** (sau một lượt gửi hỏng có câu trả lời HTTP, không phải sau khi quá 10 giây) | nonce **MỚI** | một thông báo mới. Cùng `settlementItemId` có thể xuất hiện trong nhiều request, mỗi cái một nonce |
 | **Hỏi lại đối tác** (trên dòng còn đang dở, ví dụ hệ thống chúng tôi dừng trước khi nghe được câu trả lời của bạn) | **CÙNG** nonce với lượt gọi gốc, cùng gói | để biết bạn đã có chưa. Nếu bạn **chưa từng thấy**, bạn xử lý ngay và trả `2xx`. Nếu bạn **đã có**, bạn trả `409` và chúng tôi khép dòng là đã gửi |
 
 Vì vậy `409` là **bắt buộc** (không phải "khuyến nghị") và phải nghĩa đúng là "tôi đã thấy `deliveryNonce`
@@ -195,10 +246,11 @@ này rồi": đó là cách duy nhất để "Hỏi lại đối tác" phân bi�
 Chống trùng theo `settlementItemId` sẽ từ chối nhầm một lượt **Gửi lại** hợp lệ.
 
 🔒 **Lớp tự chặn của chúng tôi.** Một khi một dòng tất toán đã CHỐT ở phía chúng tôi — bạn đã xác nhận
-khớp, bạn báo lệch mà chúng tôi chưa xử lý xong, hoặc ops của chúng tôi đã ghi nhận đã trả qua kênh
-khác — hệ thống từ chối gửi lại dòng đó: thao tác **Gửi** hỏng ở phía chúng tôi TRƯỚC khi có bất kỳ lượt
+khớp, hoặc bạn báo lệch mà chúng tôi chưa xử lý xong — hệ thống từ chối gửi lại dòng đó: việc gửi hỏng ở phía chúng tôi TRƯỚC khi có bất kỳ lượt
 gọi mạng nào chạm tới bạn. Bạn sẽ không nhận hai thông báo độc lập cho cùng một sự kiện kinh tế qua kênh
 này, trừ khi ops chủ động mở lại dòng đó trước.
+
+Nếu bạn còn giữ một gói chưa xử lý đã lâu, hãy hỏi đơn vị trước khi chi trả: dòng đó có thể đã được đóng bằng kênh khác. Chi trả thêm lúc đó là chi trả hai lần ở phía bạn, và chúng tôi không ghi thêm điểm nào cho dòng đã đóng.
 
 ⚙️ Cùng cam kết vận hành phía chúng tôi như RECOVERY: **không đi theo chuyển hướng `3xx`**, endpoint
 của bạn phải là **`https://`** trên Internet công khai (không loopback/mạng riêng), hạn **10 giây** mỗi
@@ -214,7 +266,7 @@ Gửi khi bạn đã thực sự trả; đó là thứ khép dòng ở phía ch�
   **không** khớp theo `externalUserId`.
 - Gửi `externalUserId` ở phong bì như bình thường: đó chính là giá trị bạn nhận trong gói.
 - 🔴 **Nếu bạn không bao giờ gửi**, không có gì hỏng, nhưng dòng vẫn mở: sau **7 ngày** (mặc định) nó vào
-  danh sách **quá hạn** của ops chúng tôi, và ops sẽ nhắc bạn hoặc ghi nhận thanh toán bằng tay.
+  danh sách **quá hạn** của ops chúng tôi, và ops sẽ nhắc bạn.
 - Dùng `POINT_REDEEMED` đòi tích hợp của bạn được phép gửi loại sự kiện đó trên nguồn đơn hàng — nhờ ops
   của chúng tôi bật khi bạn khai địa chỉ nhận điểm.
 
@@ -222,9 +274,11 @@ Gửi khi bạn đã thực sự trả; đó là thứ khép dòng ở phía ch�
 
 | | |
 |---|---|
-| Ai kích hoạt | **ops của chúng tôi**, bấm nút trên màn — KHÔNG có job nền tự động gửi |
-| Gửi hàng loạt | **tuần tự**, không song song (**Gửi tất cả**) |
-| Gửi lại sau lỗi | ops bấm **Gửi lại** — nonce mới, cùng `settlementItemId` |
+| Ai kích hoạt | **ops của chúng tôi**, bấm **Chi trả** trên màn — KHÔNG có job nào tự bắt đầu gửi |
+| Gửi hàng loạt | **tuần tự**, không song song (**Gửi tất cả**). **Từ bản v1.4.1**, chiến dịch Reward được chi trả bằng MỘT nút (**Chi trả**) chạy nền: chỉ gửi, mỗi người chơi một thông báo (điểm đã chuyển một lần ở bước chốt kỳ điểm; **Chi trả** không chuyển lần nữa), **với nhịp mặc định 10 thông báo mỗi giây cho mỗi tích hợp** (chỉnh được theo từng đơn vị). Ở nhịp đó 6.642 dòng mất khoảng **11 phút** khi bạn trả lời dưới 100 ms mỗi dòng; bạn trả lời chậm hơn thì thời gian gửi ≈ *số dòng × thời gian bạn trả lời mỗi dòng* (ví dụ 200 ms mỗi dòng thì khoảng 22 phút) |
+| Khi bạn ngừng trả lời | **Từ v1.4.1:** sau **20 lần gửi lỗi liên tiếp** (không trả lời trong 10 giây, hoặc trả mã khác `2xx`/`409`/`422`) lượt chạy **tự tạm dừng** và hiện cho ops *"đối tác không trả lời"*; ops bấm **Tiếp tục** khi bạn sẵn sàng và chúng tôi chỉ gửi các dòng chưa gửi. Lỗi cấu hình bên chúng tôi (chưa có địa chỉ, chưa có khoá) thì dừng cả lượt ngay |
+| Gửi lại sau lỗi | ops bấm **Gửi lại** (từ v1.4.1 còn có **Gửi lại phần lỗi** cho cả một lượt chạy) — nonce mới, cùng `settlementItemId` — trừ sau "không trả lời trong 10 giây": khi đó chỉ có **Hỏi lại đối tác** (cùng nonce) |
+| Địa chỉ đổi sau khi đợt đã tạo | đúng lúc ops bấm **Chi trả**, chúng tôi kiểm kênh còn dùng được và gửi tới địa chỉ **hiện tại** (từ v1.4.1) |
 | Dòng còn đang dở | ops bấm **Hỏi lại đối tác** — cùng gói, cùng nonce (§4) |
 | Trạng thái gửi | đọc được qua màn vận hành của chúng tôi, **tách biệt** với việc bạn đã trả lời gì về khoản đó qua kênh khác |
 
@@ -253,7 +307,39 @@ tự này**:
 Đọc cột **theo tiêu đề**, đừng theo vị trí: cột 4 là cột mới và mọi cột sau nó dịch sang phải một ô
 (xem [changelog.md](./changelog.md)).
 
-## 7. Checklist
+## 7. Từng bước: dựng bộ nhận và lên chính thức
+
+Lối đi cho lập trình viên bắt đầu từ con số không. Mỗi bước nêu mục chứa chi tiết.
+
+| # | Bạn làm | Xong khi |
+|---|---|---|
+| 1 | Đọc [credential-derivation.md](./credential-derivation.md) và dẫn xuất khoá **SETTLEMENT** từ `masterSecret` (khác khoá RECOVERY và EVENT) | bạn tái tạo được test vector |
+| 2 | Dựng một endpoint **HTTPS** nhận `POST` với thân JSON ([§2](#2-chúng-tôi-gọi-bạn--post-địa-chỉ-nhận-điểm-của-bạn)) và đưa địa chỉ cho ops của chúng tôi ([§2.0](#20-khai-địa-chỉ)). Giữ địa chỉ đúng từng ký tự | ops của chúng tôi thấy **Sẵn sàng gửi điểm** |
+| 3 | Trong handler, **theo đúng thứ tự**: (a) verify chữ ký trên **byte thô** và cửa sổ ±5 phút, sai thì trả `401` ([§3](#3-chúng-tôi-tự-xác-thực-với-bạn--partnersettlementsignaturev1)); (b) đọc `deliveryNonce`: đã thấy rồi thì trả `409` và dừng ([§4](#4-chống-phát-lại--hai-nghĩa-vụ-không-phải-một)); (c) kiểm thân, từ chối vì lý do nghiệp vụ thì trả `422`; (d) lưu dòng (`settlementItemId`, `externalUserId`, `pointAmount`, `deliveryNonce`) **trước khi** trả lời; (e) trả `2xx` | các ca conformance ([testing.md §1.6](./testing.md#16-kênh-settlement--8-ca-chạy-riêng)) qua |
+| 4 | Cộng điểm cho người chơi theo **`externalUserId`**, tối đa **một lần cho mỗi `settlementItemId`** trong sổ của bạn: lần **Gửi lại** mang cùng `settlementItemId` với `deliveryNonce` mới, nên nếu đã cộng dòng đó thì trả `2xx` và **không** cộng lại. (Chỉ từ chối theo `deliveryNonce`; không bao giờ trả `409` vì `settlementItemId` lặp) | dòng bị phát lại không bao giờ áp hai lần |
+| 5 | Trả lời nhanh (dưới 10 giây, tốt nhất vài trăm mili giây) và **làm việc thật sau khi trả lời**. Trả lời chậm bị tính là gửi lỗi, và 20 lần liên tiếp tạm dừng cả lượt ([§6](#6-vận-hành)) | thời gian trả lời p99 chỉ vài trăm mili giây |
+| 6 | Sau khi **thật sự đã trả** một dòng, gửi sự kiện `POINT_REDEEMED` với `settlementItemId` của dòng đó chép nguyên văn và **đúng số tiền** của bảng kê ([§5](#5-sau-khi-bạn-trả--báo-lại-bằng-point_redeemed), [event-ingestion.md](./event-ingestion.md)) | dòng hiện **Khớp** ở ops của chúng tôi |
+| 7 | Trên **sandbox**, tự gửi cho mình một thông báo thử (`POST /api/v1/integrations/settlement/test`, [testing.md §1.7](./testing.md)); lần đầu phải trả `2xx`, cùng nonce lặp lại phải trả `409`. Mẫu **không** phải dòng thật: đừng ghi vào sổ | lần thử trả `SENT_OK` |
+| 8 | Nhờ ops của chúng tôi bật loại sự kiện `POINT_REDEEMED` cho tích hợp của bạn và hẹn ngày lên chính thức ([go-live.md](./go-live.md)); rồi họ chi trả **một đợt nhỏ đầu tiên** và xem những dòng đầu đóng lại | dòng thật đầu tiên **Khớp** |
+
+**Ops của chúng tôi thấy gì cho mỗi câu trả lời của bạn** (để bạn biết phía bên kia chuyện gì xảy ra):
+
+| Bạn trả lời | Ops của chúng tôi thấy ở dòng |
+|---|---|
+| `2xx` | *Đang chờ đối tác* (đã nhận, chưa báo đã trả) |
+| `200` đúng khuôn `settlement-result.v1` (§2.2a), cùng số tiền | *Đối tác đã xác nhận* (**Khớp**) ngay: dòng đóng lại |
+| `200` đúng khuôn `settlement-result.v1`, số tiền khác | *Đối tác báo lệch*: **không cộng gì**, ops liên hệ bạn |
+| `2xx`, rồi `POINT_REDEEMED` đúng số tiền | *Đối tác đã xác nhận* (**Khớp**): dòng đóng lại |
+| `2xx`, rồi `POINT_REDEEMED` số tiền khác | *Đối tác báo lệch*: **không cộng gì**, ops liên hệ bạn |
+| `409` ở lần gửi đầu | *Đối tác từ chối* |
+| `422` | *Đối tác từ chối*, kèm lý do hiện bằng nhãn |
+| mã khác | *Gửi lỗi* (ops bấm được **Gửi lại**) |
+| không trả lời trong 10 giây | *Gửi lỗi, chưa biết câu trả lời* (chúng tôi **hỏi lại**, cùng nonce) |
+| không có `POINT_REDEEMED` sau 7 ngày | dòng bị gắn cờ **Quá hạn**; ops hỏi bạn |
+
+**Hãy báo chúng tôi ngay khi** endpoint đổi địa chỉ ([go-live.md B.3](./go-live.md)), bạn xoay khoá ([§3](#3-chúng-tôi-tự-xác-thực-với-bạn--partnersettlementsignaturev1)), hoặc bạn sẽ ngừng hoạt động một thời gian: sự cố dài làm một lượt chạy tạm dừng (ở trên), và các dòng còn mở cho tới khi bạn báo.
+
+## 8. Checklist
 
 ```text
 [ ] Đưa ops của chúng tôi một địa chỉ https:// nhận thông báo (§2.0)
@@ -262,7 +348,8 @@ tự này**:
 [ ] Dựng verify chữ ký PartnerSettlementSignatureV1 trên thân THÔ (§3)
 [ ] Cộng điểm theo externalUserId, không theo partyId (§2.1)
 [ ] Lưu sổ deliveryNonce đã thấy và trả 409 khi trùng — 409 cho không việc gì khác (§4)
-[ ] Trả 2xx khi đã nhận — không cần xử lý xong mới trả 2xx
+[ ] Cộng tối đa một lần cho mỗi settlementItemId trong sổ của bạn; trả 2xx (không phải 409) cho lần Gửi lại của dòng đã cộng (§7 bước 4)
+[ ] Trả 2xx khi đã nhận, dưới 10 giây — không cần xử lý xong mới trả 2xx; 20 lần gửi lỗi liên tiếp tạm dừng cả lượt (§6)
 [ ] Gửi POINT_REDEEMED cho mọi dòng bạn đã trả, chép settlementItemId nguyên văn (§5)
-[ ] Chạy các ca conformance settlement với endpoint của bạn (testing.md §1.6)
+[ ] Chạy các ca conformance settlement với endpoint của bạn (testing.md §1.6) và tự gửi một thông báo thử trên sandbox (testing.md §1.7)
 ```

@@ -247,6 +247,61 @@ rồi chạy lại lệnh ở mục 4. Sau lần nâng bản đầy đủ, mỗi
 
 ---
 
+## 4f. Soát chữ đã lưu không đọc được — TRƯỚC khi đổi container (khi nâng lên bản làm sạch ô chữ tự do)
+
+Chỉ cần với bản nói rõ điều này ở [changelog.md](changelog.md). Từ bản đó, ô chữ người dùng gõ mà chỉ gồm ký tự không hiện được (ví dụ chỉ U+200B, U+3164 hoặc U+00AD) thì tính là rỗng. Năm loại tài liệu đã lưu được ứng dụng đọc lại theo khuôn: chính sách link chương trình (bản đã xuất bản và bản nháp), các bước hướng dẫn của chiến dịch, phiên bản cấu hình chiến dịch, phiên bản tài liệu CMS. Một ô chữ trong đó mà chỉ gồm ký tự không hiện được thì bản mới từ chối: link chương trình báo lỗi 500, đơn trang bán hàng mất ghi nhận tiếp thị mà không báo, trang chủ trang bán hàng hiện trống và màn sửa của nó không tải được khối nào (lần lưu sau ghi đè chúng), xuất bản chiến dịch báo `409 revision_invalid`.
+
+🔴 **Chạy bằng tài khoản BỎ QUA bảo mật theo hàng** — tài khoản có `BYPASSRLS` hoặc là siêu người dùng, cùng loại với tài khoản chạy migration (mục 4). Tài khoản thường thấy thiếu dòng, kết quả trông "sạch" mà không sạch; đoạn kiểm tự từ chối chạy nếu tài khoản không thuộc hai loại trên.
+
+Lưu đoạn sau thành file `kiem-chu-khong-doc-duoc.sql`. Nó **chỉ đọc, không đổi dữ liệu nào**.
+
+```sql
+\set ON_ERROR_STOP on
+\pset footer off
+SELECT (rolsuper OR rolbypassrls) AS bypass FROM pg_roles WHERE rolname = current_user \gset
+\if :bypass
+\else
+  DO $$BEGIN RAISE EXCEPTION 'This account does not bypass row-level security: the list would miss rows'; END$$;
+\endif
+SELECT '^[[:space:]\u0001-\u001F\u007F-\u009F\u00A0\u00AD\u034F\u0600-\u0605\u061C\u06DD\u070F\u0890-\u0891\u08E2\u115F-\u1160\u1680\u17B4-\u17B5\u180B-\u180F\u2000-\u200F\u2028-\u202F\u205F-\u206F\u2800\u3000\u3164\uFE00-\uFE0F\uFEFF\uFFA0\uFFF0-\uFFFB\uFFFD]*$' AS nothing_readable \gset
+
+WITH stored_text AS (
+  SELECT 'link revision' AS source, r.tenant_id, r.id AS row_id, v.v AS value
+  FROM creator_os.program_link_revisions r, LATERAL jsonb_path_query(r.policy, 'strict $.**', '{}', true) AS v(v)
+  UNION ALL
+  SELECT 'link draft', c.tenant_id, c.id, v.v
+  FROM creator_os.program_link_configs c, LATERAL jsonb_path_query(c.draft, 'strict $.**', '{}', true) AS v(v)
+  UNION ALL
+  SELECT 'guide steps', m.origin_tenant_id, m.id, v.v
+  FROM creator_os.missions m, LATERAL jsonb_path_query(m.display_config, 'strict $.**', '{}', true) AS v(v)
+  UNION ALL
+  SELECT 'campaign version', cv.tenant_id, cv.id, v.v
+  FROM creator_os.campaign_versions cv, LATERAL jsonb_path_query(cv.config, 'strict $.**', '{}', true) AS v(v)
+  UNION ALL
+  SELECT 'cms document version', d.tenant_id, d.id, v.v
+  FROM creator_os.cms_document_versions d, LATERAL jsonb_path_query(d.fields, 'strict $.**', '{}', true) AS v(v)
+)
+SELECT source, tenant_id, row_id, value #>> '{}' AS value
+FROM stored_text
+WHERE jsonb_typeof(value) = 'string'
+  AND (value #>> '{}') ~ :'nothing_readable'
+  AND (value #>> '{}') !~ '^[[:space:]]*$'
+ORDER BY source, tenant_id, row_id;
+```
+
+Chạy (bỏ phần `?schema=…` khỏi địa chỉ kết nối, vì `psql` không nhận tham số đó):
+
+```bash
+psql "${DATABASE_URL_MIGRATE%%\?*}" -X -q -f kiem-chu-khong-doc-duoc.sql
+```
+
+| Kết quả | Việc làm |
+|---|---|
+| Không có dòng nào | xong, nâng tiếp |
+| Có dòng | **dừng nâng**. Cột `source` cho biết loại tài liệu, `row_id` là dòng chứa nó; cột `value` thường trông trống vì chữ đó toàn ký tự không hiện được. Sửa chữ đó trên Console: đổi tên rồi xuất bản bản Link mới, sửa bước hướng dẫn của chiến dịch hoặc khối CMS. Rồi chạy lại đoạn kiểm. Dòng thuộc bản đã xuất bản từ trước (`link revision`, `campaign version`), không sửa được, hoặc dòng không xác định được là ô nào, thì gửi kết quả cho đội phát hành trước khi nâng. |
+
+---
+
 ## 4. Chạy migration — bằng image MỚI, TRƯỚC khi đổi container
 
 Cùng thứ tự Diso dùng cho bản cài của chính mình: cấu trúc cơ sở dữ liệu đi trước, ứng dụng đi sau.
