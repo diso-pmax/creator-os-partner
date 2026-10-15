@@ -24,6 +24,10 @@ such as "contract 1.4.0" still leads here.
 
 🟡 **CHANGED MEANING — how a Reward campaign's settlement notifications are sent (from the release that carries "Pay reward").** Notifications are no longer pushed in one long request: our ops presses one **Pay** button and the run goes **in the background**, at a default pace of **10 notifications per second per integration** (adjustable per unit), and it **pauses by itself after 20 failed sends in a row** (no answer in 10 seconds, or any answer other than `2xx`, `409`, `422`) until our ops resumes it. **The notification body, the signature and the answers we read are unchanged**: a receiver built to [settlement.md](./settlement.md) keeps working. What changes for you: answer quickly (well under 10 seconds), and tell us before a planned outage. Also new in settlement.md: a step-by-step path to build the receiver and go live (§7), and the advice to apply a line at most once per `settlementItemId` in your own records.
 
+## v1.4.0-rc.2 — 2026-10-16
+
+No changes.
+
 ## v1.4.0-rc.1 — 2026-10-15
 
 🟡 **Addition to v1.3.0:** **`GET /launch` answers a player's browser differently when the launch code is bad.** When the request carries `Accept: text/html` (a normal page navigation) and the code does not exist, has expired or was already consumed, we answer `302` to the game's own `/entry?reason=launch_invalid` screen; when the capability is not enabled for the campaign, `302` to `/entry?reason=launch_unavailable`. Any other caller (an API client, curl, your server-side check, the conformance suite) still gets the published `401 INVALID_LAUNCH_CODE` / `403 feature_disabled`. Some HTTP libraries send `text/html` by default: set `Accept: application/json` explicitly if you call this URL from your server ([campaign-launch.md](./campaign-launch.md)).

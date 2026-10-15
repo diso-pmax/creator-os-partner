@@ -39,6 +39,10 @@ có gì thì ghi *"không"*, đừng bỏ trống:
 
 Không đổi.
 
+## v1.4.0-rc.2 — 2026-10-16
+
+Không đổi.
+
 ## v1.4.0-rc.1 — 2026-10-15
 
 - 🟡 **Link chia sẻ Storefront dùng mã ngắn `/l/{code}` trên domain của đơn vị**: giữ cơ chế chọn custom domain đã xác minh hoặc subdomain của đơn vị như trước; không cần `PROGRAM_LINK_PUBLIC_BASE_URL` cho link Storefront. Proxy cần chuyển `/l/*` tới API (router trong image đã có cấu hình). Sau khi nâng cấp, tạo một link chia sẻ Storefront, mở `/l/…`, kiểm tra chuyển tới `/s/…/r/…` trên domain Storefront kèm consent và cookie. Biến `PROGRAM_LINK_PUBLIC_BASE_URL` tiếp tục dùng cho link tích hợp ngoài.
