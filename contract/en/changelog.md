@@ -24,6 +24,10 @@ such as "contract 1.4.0" still leads here.
 
 No changes.
 
+## v1.3.1-rc.1 — 2026-10-15
+
+🟡 **Player groups (`segments`): the unit declares them, and the catalog belongs to the unit.** The wire contract does not change (same body, same `200`, same `400`). What changes is who declares and how far a declaration reaches: the **unit that runs the campaign** declares its groups in its own Console, and a group it declared can be sent from **every integration of that unit** (before, a group was declared per integration, by Diso). Groups declared before this release are carried over to the unit's catalog with the same codes, so the codes you already send keep attaching; from now on the codes come from **the unit** (not from Diso), which declares and archives them in its own Console. A well-formed code the unit has not declared, or has archived, is still not an error: the launch succeeds and that group is not attached. Read [campaign-launch.md §4.1a](./campaign-launch.md#41a-player-groups-segments) for the rules, including the limits (50 active, 200 in total per unit) and what archiving does.
+
 ## v1.3.0 — 2026-10-12
 
 Upgrading from v1.0.6 (or any release before v1.3.0): read this section, then the detailed `v1.3.0-rc.*`, `v1.2.0-rc.*`, `v1.1.0` and `v1.0.7` sections below (kept as they are). Summary of every contract change since v1.0.6:

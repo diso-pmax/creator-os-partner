@@ -156,7 +156,7 @@ CONF_LAUNCH_CAMPAIGN_ID=<một campaign THẬT, đang active, tích hợp của 
 | `LAUNCH-7` | code của campaign A không mở được campaign B | bị từ chối |
 | `LAUNCH-8` | `externalUserId` từ launch khớp session tạo ra | đúng người dùng |
 | `LAUNCH-9` | `segments` có một slug sai khuôn | `400`, không có `launchUrl` |
-| `LAUNCH-10` | `segments` đúng khuôn nhưng chưa khai cho tích hợp | `200` + `launchUrl` (nhóm chỉ không được gắn) |
+| `LAUNCH-10` | `segments` đúng khuôn nhưng đơn vị chưa khai | `200` + `launchUrl` (nhóm chỉ không được gắn) |
 
 ⏱️ **`LAUNCH-4` tốn khoảng một phút để chạy** — nó chờ hết TTL 60 giây thật của Launch Grant. Không có
 cách nào nhanh hơn để kiểm điều này ở dạng hộp đen thuần: code hết hạn, đã tiêu thụ, và chưa từng tồn

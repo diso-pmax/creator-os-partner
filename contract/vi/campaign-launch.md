@@ -145,7 +145,7 @@ này), không phải thứ chặn được 100% bằng cơ chế kỹ thuật b�
 | `campaignId` | URL path | string | **CÓ** | campaign bạn muốn launch |
 | `externalUserId` | JSON body | string | **CÓ** | 🔴 đúng định danh bạn dùng làm `externalUserId` ở kênh EVENT cho người dùng này — xem §7. Không được chứa ký tự điều khiển (NUL, tab, xuống dòng, DEL…): giá trị có chúng bị từ chối bằng `400 validation_error` và không tạo launch nào |
 | `displayName` | JSON body | string hoặc `null` | không | tên hiển thị **gợi ý** cho người chơi này, tối đa 256 ký tự. Chỉ là gợi ý: nếu không qua chính sách đặt tên của chúng tôi thì bị bỏ và launch vẫn thành công. Sai kiểu hoặc quá độ dài là `400` |
-| `segments` | JSON body | mảng string, hoặc `null` | không | **nhóm người chơi** bạn gắn cho người này, ví dụ `["khach-moi-261013"]`. Chỉ gửi **sau khi Diso báo đã bật** cho bạn và **đã khai nhóm đó** cho tích hợp của bạn — xem §4.1a |
+| `segments` | JSON body | mảng string, hoặc `null` | không | **nhóm người chơi** bạn gắn cho người này, ví dụ `["khach-moi-261013"]`. Chỉ gửi **sau khi Diso báo đã bật** cho bạn và **đơn vị chạy chiến dịch đã khai nhóm đó** — xem §4.1a |
 
 ```jsonc
 // POST /api/v1/campaigns/camp_01J.../launch
@@ -154,7 +154,7 @@ này), không phải thứ chặn được 100% bằng cơ chế kỹ thuật b�
 
 ### 4.1a Nhóm người chơi (`segments`)
 
-Nhóm là một **thoả thuận giữa Diso và bạn**: Diso khai trước, trên tích hợp của bạn, những nhóm nào được phép (ví dụ `khach-moi-261013`, "khách mới, chưa có đơn trước 13/10, do bạn tính"). Lượt launch chỉ **gắn** các nhóm đó lên người chơi; nó không tạo nhóm mới. Bảng xếp hạng lọc theo nhóm sẽ chỉ xếp những người **đang mang** nhóm.
+Nhóm là một **thoả thuận giữa đơn vị chạy chiến dịch và bạn**. **Đơn vị** khai trước các nhóm của mình, ngay trên Console của đơn vị (màn **Nhóm người chơi**): một mã, một tên hiển thị và một ghi chú điều kiện (ví dụ `khach-moi-261013`, "khách mới, chưa có đơn trước 13/10, do bạn tính"). Sau đó đơn vị **đưa bạn các mã để gửi**. Danh mục nhóm thuộc về **đơn vị**, không thuộc một tích hợp: mọi tích hợp của cùng một đơn vị đều gửi được mọi nhóm đơn vị đã khai. Lượt launch chỉ **gắn** các nhóm đó lên người chơi; nó không tạo nhóm mới. Bảng xếp hạng lọc theo nhóm sẽ chỉ xếp những người **đang mang** nhóm.
 
 ```jsonc
 { "externalUserId": "usr_4471", "segments": ["khach-moi-261013"] }
@@ -166,7 +166,9 @@ Nhóm là một **thoả thuận giữa Diso và bạn**: Diso khai trước, tr
 | **Mỗi slug đúng khuôn** | Chữ thường và số, nối nhau bằng **một** dấu gạch ngang (`a`, `a-b`, `khach-moi-261013`); tối đa **40** ký tự. Chữ hoa, khoảng trắng, dấu, gạch dưới, ký tự điều khiển, chuỗi rỗng đều **không hợp lệ**. Chúng tôi **không tự chuẩn hoá**: `Khach-Moi` là `400`, không thành `khach-moi`. |
 | **Một phần tử sai ⇒ từ chối cả lời gọi** | `400 validation_error`, **chưa có vé nào được tạo**, kể cả khi các slug còn lại đều hợp lệ. `segments` không phải mảng, hoặc có phần tử không phải chuỗi, cũng là `400`. |
 | **Tối đa 10 slug khác nhau mỗi lần gọi** | Slug trùng nhau trong cùng lần gọi được bỏ trùng **trước khi đếm**: 11 phần tử mà chỉ có 10 slug khác nhau vẫn qua. Từ 11 slug khác nhau trở lên là `400`. |
-| **Slug đúng khuôn nhưng Diso chưa khai cho tích hợp của bạn (hoặc đã lưu trữ)** | **Không phải lỗi.** Launch vẫn thành công, nhóm đó **không được gắn**, các nhóm đã khai trong cùng lời gọi vẫn được gắn. Diso thấy slug đó trong danh sách "chưa khai" để khai nếu hợp lý. Nhóm đã khai cho đối tác khác **không dùng được** cho bạn. |
+| **Slug đúng khuôn nhưng đơn vị chưa khai (hoặc đã lưu trữ)** | **Không phải lỗi.** Launch vẫn thành công, nhóm đó **không được gắn**, các nhóm đã khai trong cùng lời gọi vẫn được gắn. Đơn vị thấy mã đó ở tab **"Chưa khai"** của màn **Nhóm người chơi** và có thể khai. Danh sách này là **cố gắng hết sức**: một mã có thể bị sót khi nhiều lượt launch đến cùng lúc, và nó chỉ giữ tối đa **50** mã khác nhau (mã nhiều hơn được gộp vào cờ "còn mã chưa liệt kê hết"). Đừng dựa vào nó để biết bạn đã gửi những nhóm nào. Nhóm do **đơn vị khác** khai thì **không dùng được** cho bạn. |
+| **Nhóm đã lưu trữ** | Lưu trữ một nhóm làm nó thôi được gắn ở các lượt launch **sau** (coi như mã chưa khai). Người chơi **đã mang** nhóm thì vẫn mang, và các bảng xếp hạng đang dùng nhóm đó không đổi. Đơn vị có thể khôi phục nhóm. |
+| **Giới hạn mỗi đơn vị: 50 nhóm đang dùng, 200 nhóm tổng cộng** | Một đơn vị có tối đa **50 nhóm đang dùng** và **200 nhóm tổng cộng, kể cả nhóm đã lưu trữ** (mã không bao giờ bị xoá hay đổi tên). Lưu trữ giải phóng một chỗ trong 50 chỗ đang dùng, **không** giải phóng chỗ trong 200. Đây là giới hạn khi khai nhóm, không phải giới hạn những gì bạn gửi. |
 | **`segments` vắng, `null` hoặc `[]`** | **Không đổi gì** về nhóm của người chơi. `[]` **không** có nghĩa "xoá hết". |
 | **Chỉ cộng, không bớt** | Người chơi đã có nhóm A, bạn gửi nhóm B ⇒ họ có **cả A và B**. Không có cách nào bớt nhóm qua launch. |
 | **Trần 30 nhóm mỗi người chơi, tất cả hoặc không** | Nếu gắn thêm sẽ vượt **30** nhóm tích luỹ, lượt launch đó **không thêm nhóm mới nào** (không thêm "vài nhóm đầu"), nhưng vẫn thành công. Kết quả không phụ thuộc thứ tự bạn liệt kê. |
@@ -193,7 +195,7 @@ curl -sS -X POST "$API/campaigns/$CAMPAIGN_ID/launch" \
   "detail": "segments.1: Invalid", "errors": { "segments.1": ["Invalid"] } }
 ```
 
-⚠️ **Phản hồi `200` không cho biết nhóm nào được gắn.** Nó chỉ trả `launchUrl`/`expiresAt`, kể cả khi một slug chưa được khai cho tích hợp của bạn (khi đó slug đó âm thầm không được gắn, đúng thiết kế). Muốn biết một nhóm đã khai hay chưa, hãy hỏi chúng tôi **trước khi** gửi lần đầu; đừng suy ra từ phản hồi.
+⚠️ **Phản hồi `200` không cho biết nhóm nào được gắn.** Nó chỉ trả `launchUrl`/`expiresAt`, kể cả khi một slug chưa được đơn vị khai (khi đó slug đó âm thầm không được gắn, đúng thiết kế). Muốn biết một nhóm đã khai hay chưa, hãy hỏi đơn vị chạy chiến dịch **trước khi** gửi lần đầu (màn **Nhóm người chơi** của đơn vị liệt kê những nhóm đã khai); đừng suy ra từ phản hồi.
 
 🔴 **Bảng xếp hạng "khách mới" đếm từ lúc người chơi tham gia.** Đơn đặt **trước lần launch đầu tiên** của người chơi **không được đếm**. Với nhóm kiểu "khách mới", hãy launch người đó **trước hoặc cùng lúc** với đơn đầu tiên của họ. Nhóm tới muộn (sau khi đã có đơn) thì các đơn từ lúc họ tham gia **vẫn được đếm**.
 
@@ -390,8 +392,8 @@ chúng tôi cho tới khi chính trang campaign tải xong.
 Không — mọi secret theo kênh đều độc lập; xoay hay thu hồi một cái không ảnh hưởng cái khác (xem
 [testing.md § Xoay khoá](./testing.md#3-xoay-khoá)).
 
-**Tôi gửi một nhóm mà chúng tôi chưa khai cho tích hợp của bạn thì sao?**
-Lời gọi vẫn `200`, người chơi vẫn vào được, nhóm đó **không** được gắn (§4.1a). Sau khi chúng tôi khai nhóm đó, **lần launch kế tiếp** của người chơi sẽ gắn nó; chúng tôi **không** chạy bù cho người chơi không launch lại.
+**Tôi gửi một nhóm mà đơn vị chưa khai thì sao?**
+Lời gọi vẫn `200`, người chơi vẫn vào được, nhóm đó **không** được gắn (§4.1a). Sau khi đơn vị khai nhóm đó, **lần launch kế tiếp** của người chơi sẽ gắn nó; chúng tôi **không** chạy bù cho người chơi không launch lại.
 
 **Tôi cần làm gì để một người chơi mới được xếp vào bảng "khách mới"?**
 Launch người đó **kèm** `segments` **trước hoặc cùng lúc** với đơn đầu tiên của họ (§4.1a). Đơn đặt trước lần launch đầu tiên không được đếm.

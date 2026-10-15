@@ -155,7 +155,7 @@ CONF_LAUNCH_CAMPAIGN_ID=<a real, active campaign your integration can launch> \
 | `LAUNCH-7` | a code minted for campaign A cannot open campaign B | rejected |
 | `LAUNCH-8` | `externalUserId` from launch matches the session created | correct user |
 | `LAUNCH-9` | `segments` with one malformed slug | `400`, no `launchUrl` |
-| `LAUNCH-10` | `segments` well-formed but not yet declared for the integration | `200` + `launchUrl` (the group is simply not attached) |
+| `LAUNCH-10` | `segments` well-formed but not declared by the unit | `200` + `launchUrl` (the group is simply not attached) |
 
 ⏱️ **`LAUNCH-4` takes about a minute to run** — it waits out the real 60-second Launch Grant TTL. There
 is no faster way to test this as a pure black box: expired, already-consumed, and never-existed codes

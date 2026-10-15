@@ -103,7 +103,7 @@ integration), not something enforced by a technical mechanism you can observe.
 | `campaignId` | URL path | string | **YES** | the campaign you want to launch |
 | `externalUserId` | JSON body | string | **YES** | 🔴 the same identifier you use as `externalUserId` on the EVENT channel for this user — see §7. Must not contain control characters (NUL, tab, newline, DEL…): a value that does is refused with `400 validation_error` and no launch is created |
 | `displayName` | JSON body | string or `null` | no | a **suggested** display name for this player, at most 256 characters. It is only a suggestion: if it does not pass our naming policy it is dropped and the launch still succeeds. Wrong type or over the length limit is a `400` |
-| `segments` | JSON body | array of strings, or `null` | no | the **player groups** you attach to this person, for example `["khach-moi-261013"]`. Send it only **after Diso tells you it is on** and **has declared the group** for your integration; see §4.1a |
+| `segments` | JSON body | array of strings, or `null` | no | the **player groups** you attach to this person, for example `["khach-moi-261013"]`. Send it only **after Diso tells you it is on** and **the unit that runs the campaign has declared the group**; see §4.1a |
 
 ```jsonc
 // POST /api/v1/campaigns/camp_01J.../launch
@@ -112,7 +112,7 @@ integration), not something enforced by a technical mechanism you can observe.
 
 ### 4.1a Player groups (`segments`)
 
-A group is an **agreement between Diso and you**: Diso declares, on your integration and ahead of time, which groups are allowed (for example `khach-moi-261013`, "new customer, no order before 13/10, counted by you"). A launch only **attaches** those groups to the player; it never creates a group. A leaderboard that filters by a group ranks only the people who **currently carry** it.
+A group is an **agreement between the unit that runs the campaign and you**. The **unit** declares its groups ahead of time, in its own Console (the **Player groups** screen): a code, a display name and a note on the condition (for example `khach-moi-261013`, "new customer, no order before 13/10, counted by you"). The unit then **gives you the codes to send**. The catalog belongs to the **unit**, not to one integration: every integration of the same unit can send every group the unit declared. A launch only **attaches** those groups to the player; it never creates a group. A leaderboard that filters by a group ranks only the people who **currently carry** it.
 
 ```jsonc
 { "externalUserId": "usr_4471", "segments": ["khach-moi-261013"] }
@@ -124,7 +124,9 @@ A group is an **agreement between Diso and you**: Diso declares, on your integra
 | **Every slug has the right shape** | Lower-case letters and digits joined by **one** hyphen (`a`, `a-b`, `khach-moi-261013`), at most **40** characters. Upper case, spaces, accents, underscores, control characters and the empty string are **invalid**. We do **not normalise**: `Khach-Moi` is a `400`, it does not become `khach-moi`. |
 | **One wrong element refuses the whole call** | `400 validation_error`, **no ticket is created**, even when the other slugs are fine. `segments` that is not an array, or an element that is not a string, is also a `400`. |
 | **At most 10 distinct slugs per call** | Duplicates in the same call are dropped **before counting**: 11 elements that contain only 10 distinct slugs still pass. 11 or more distinct slugs is a `400`. |
-| **A well-formed slug Diso has not declared for your integration (or has archived)** | **Not an error.** The launch succeeds, that group is **not attached**, and the declared groups in the same call still are. Diso sees the slug in a "not declared yet" list and can declare it. A group declared for another partner is **not usable** by you. |
+| **A well-formed slug the unit has not declared (or has archived)** | **Not an error.** The launch succeeds, that group is **not attached**, and the declared groups in the same call still are. The unit sees the code in the **"not declared yet"** tab of its **Player groups** screen and can declare it. That list is **best effort**: a code can be missed when many launches arrive at the same moment, and it keeps at most **50** distinct codes (further codes are folded into a "more not listed" flag). Do not rely on it to find out which groups you sent. A group declared by **another unit** is **not usable** by you. |
+| **An archived group** | Archiving a group stops it from being attached at **later** launches (it is treated like a code that is not declared). Players who **already carry** it keep it, and leaderboards that use it do not change. The unit can restore it. |
+| **Limits per unit: 50 active groups, 200 in total** | A unit holds at most **50 active** groups and **200 groups in total, archived ones included** (a code is never deleted and never renamed). Archiving frees one of the 50 active places, **not** one of the 200. This is a limit on declaring groups, not on what you send. |
 | **`segments` absent, `null` or `[]`** | **Nothing changes** about the player's groups. `[]` does **not** mean "clear all". |
 | **Groups only grow** | The player has group A and you send group B: they carry **both**. There is no way to remove a group through launch. |
 | **Ceiling of 30 groups per player, all or nothing** | If attaching would pass **30** accumulated groups, that launch adds **none** of its new groups (not "the first few"), and still succeeds. The result does not depend on the order you list them in. |
@@ -151,7 +153,7 @@ curl -sS -X POST "$API/campaigns/$CAMPAIGN_ID/launch" \
   "detail": "segments.1: Invalid", "errors": { "segments.1": ["Invalid"] } }
 ```
 
-⚠️ **The `200` response does not tell you which groups were attached.** It only returns `launchUrl`/`expiresAt`, even when a slug has not been declared for your integration (that slug is then silently not attached, by design). To know whether a group is declared, ask us **before** you send it for the first time; do not infer it from the response.
+⚠️ **The `200` response does not tell you which groups were attached.** It only returns `launchUrl`/`expiresAt`, even when a slug has not been declared by the unit (that slug is then silently not attached, by design). To know whether a group is declared, ask the unit that runs the campaign **before** you send it for the first time (its **Player groups** screen lists what is declared); do not infer it from the response.
 
 🔴 **A "new customer" leaderboard counts from the moment the player joins.** An order placed **before the player's first launch** is **not counted**. For a "new customer" group, launch the person **before or together with** their first order. A group that arrives late (after orders exist) still counts the orders from the moment they joined.
 
@@ -352,8 +354,8 @@ ours until the campaign page itself loads.
 No — all channel secrets are independent; rotating or revoking one never affects another (see
 [testing.md § Key rotation](./testing.md#3-key-rotation)).
 
-**What if I send a group that has not been declared for my integration?**
-The call still returns `200`, the player still gets in, and that group is **not** attached (§4.1a). Once we declare it, the player's **next launch** attaches it; we do **not** back-fill players who do not launch again.
+**What if I send a group that the unit has not declared?**
+The call still returns `200`, the player still gets in, and that group is **not** attached (§4.1a). Once the unit declares it, the player's **next launch** attaches it; we do **not** back-fill players who do not launch again.
 
 **What must I do so a new player lands on the "new customer" leaderboard?**
 Launch that person **with** `segments` **before or together with** their first order (§4.1a). An order placed before the player's first launch is not counted.

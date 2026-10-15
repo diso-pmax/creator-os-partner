@@ -25,6 +25,10 @@ tìm ra.
 
 Không đổi.
 
+## v1.3.1-rc.1 — 2026-10-15
+
+🟡 **Nhóm người chơi (`segments`): đơn vị tự khai, danh mục thuộc về đơn vị.** Hợp đồng trên đường truyền không đổi (cùng thân, cùng `200`, cùng `400`). Thứ đổi là ai khai và một lần khai với tới đâu: **đơn vị chạy chiến dịch** khai nhóm của mình trên Console của đơn vị, và nhóm đã khai gửi được từ **mọi tích hợp của đơn vị đó** (trước đây nhóm khai theo từng tích hợp, do Diso khai). Các nhóm đã khai trước bản này được chuyển nguyên mã sang danh mục của đơn vị, nên mã bạn đang gửi vẫn được gắn như cũ; từ nay mã do **đơn vị** đưa cho bạn (không phải Diso), và đơn vị tự khai thêm hoặc lưu trữ trên Console của mình. Mã đúng khuôn mà đơn vị chưa khai, hoặc đã lưu trữ, vẫn không phải lỗi: launch thành công và nhóm đó không được gắn. Xem quy tắc ở [campaign-launch.md §4.1a](./campaign-launch.md#41a-nhóm-người-chơi-segments), gồm cả giới hạn (50 nhóm đang dùng, 200 tổng cộng mỗi đơn vị) và việc lưu trữ làm gì.
+
 ## v1.3.0 — 2026-10-12
 
 Nâng từ v1.0.6 (hoặc bản bất kỳ trước v1.3.0): đọc mục này, rồi các mục chi tiết `v1.3.0-rc.*`, `v1.2.0-rc.*`, `v1.1.0`, `v1.0.7` bên dưới (giữ nguyên). Tóm tắt mọi thay đổi hợp đồng từ v1.0.6:

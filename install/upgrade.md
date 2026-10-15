@@ -483,6 +483,57 @@ Ví dụ v1.3: sau khi có chiến dịch khai brand tài trợ theo hình `{cod
 chơi mất điểm mà không có lỗi nào. Với những mục như vậy changelog ghi rõ điều kiện, và cách xử là **sửa tiến**
 (vá, phát hành bản sau), không quay lui.
 
+### 7b. Quay lui v1.3.1 về v1.3.0: sao chép ngược nhóm người chơi (tuỳ chọn)
+
+Chỉ cần khi đơn vị đã khai nhóm **sau khi lên v1.3.1** và bạn muốn image v1.3.0 vẫn áp các nhóm đó ở lần vào game. Image cũ chỉ đọc bảng cũ `integration_segment_catalog`, nên đoạn dưới chép nhóm của bảng mới `player_segment_catalog` về bảng cũ, cho **mọi tích hợp** của đơn vị. Chạy **sau khi dừng ứng dụng và worker, TRƯỚC khi đổi sang image cũ**, bằng tài khoản migration (có `BYPASSRLS`, mục 4d). Chạy lại vô hại; nhóm đã có ở bảng cũ bị **ghi đè theo bản mới** (bảng mới là bản đúng sau khi lên v1.3.1).
+
+**Trước khi chạy đoạn dưới, kiểm vai:** `SELECT rolsuper OR rolbypassrls FROM pg_roles WHERE rolname = current_user;` phải ra `t`. Ra `f` thì **dừng**: bảng cách ly dữ liệu theo đơn vị ngay trong cơ sở dữ liệu, vai không được phép bỏ qua cơ chế đó sẽ chép 0 hàng mà không báo lỗi, và câu kiểm sau đó cũng đọc 0 hàng nên ra "đạt" giả.
+
+```sql
+INSERT INTO creator_os.integration_segment_catalog
+  (tenant_id, integration_id, slug, display_name, condition_note, state, created_by, created_at, archived_by, archived_at, updated_at)
+SELECT s.tenant_id, i.id, s.slug, s.display_name, s.condition_note, s.state, s.created_by, s.created_at, s.archived_by, s.archived_at, s.updated_at
+  FROM creator_os.player_segment_catalog s
+  JOIN creator_os.integrations i ON i.tenant_id = s.tenant_id
+ON CONFLICT (integration_id, slug) DO UPDATE SET
+  display_name = EXCLUDED.display_name, condition_note = EXCLUDED.condition_note, state = EXCLUDED.state,
+  created_by = EXCLUDED.created_by, created_at = EXCLUDED.created_at,
+  archived_by = EXCLUDED.archived_by, archived_at = EXCLUDED.archived_at, updated_at = EXCLUDED.updated_at;
+```
+
+Nhớ: sau khi quay lui, mỗi tích hợp chỉ gửi được nhóm khai cho **chính nó** (đúng v1.3.0); đoạn trên chép nhóm của đơn vị cho từng tích hợp của đơn vị để việc đó không làm mất nhóm. Đoạn này có bài kiểm tự động chạy thật SQL trên cơ sở dữ liệu thử (`player-segment-reverse-copy-runbook.test.ts`), nên không thể trôi khỏi bảng. **Quay lui là đường hai chiều chỉ khi bạn làm cả mục 7c lúc lên lại.**
+
+### 7c. Lên lại v1.3.1 sau khi đã quay lui (đọc kỹ trước khi lên lại)
+
+`migrate deploy` chỉ chạy migration **chưa ghi**. Migration `20261013150000_5457_player_segment_catalog` đã được ghi ở lần lên đầu, nên khi lên lại **nó không chạy lại và không sao chép lại**. Trong lúc image v1.3.0 chạy, nhóm người chơi được khai ở bảng cũ `integration_segment_catalog`; những nhóm đó (và những sửa tên, lưu trữ, khôi phục) **không tự vào** bảng mới `player_segment_catalog`. Lên lại mà bỏ qua mục này thì nhóm khai trong thời gian v1.3.0 hiện là "nhóm lạ" ở v1.3.1 và bảng xếp hạng không chọn được.
+
+Làm sau khi dừng ứng dụng và worker, **TRƯỚC khi chạy image v1.3.1**, bằng tài khoản migration (có `BYPASSRLS`, mục 4d). Chạy lại vô hại. Nhóm đã có ở bảng mới chỉ bị cập nhật khi hàng ở bảng cũ **mới hơn** (`updated_at` lớn hơn); khi một nhóm có ở nhiều tích hợp thì chọn hàng theo đúng luật của migration: ACTIVE trước, rồi hàng mới nhất.
+
+**Trước khi chạy đoạn dưới, kiểm vai:** `SELECT rolsuper OR rolbypassrls FROM pg_roles WHERE rolname = current_user;` phải ra `t`. Ra `f` thì **dừng**: bảng cách ly dữ liệu theo đơn vị ngay trong cơ sở dữ liệu, vai không được phép bỏ qua cơ chế đó sẽ chép 0 hàng mà không báo lỗi, và câu kiểm sau đó cũng đọc 0 hàng nên ra "đạt" giả.
+
+```sql
+INSERT INTO creator_os.player_segment_catalog
+  (tenant_id, slug, display_name, condition_note, state, created_by, created_at, archived_by, archived_at, updated_at)
+SELECT DISTINCT ON (tenant_id, slug)
+       tenant_id, slug, display_name, condition_note, state, created_by, created_at, archived_by, archived_at, updated_at
+  FROM creator_os.integration_segment_catalog
+ ORDER BY tenant_id, slug, (state = 'ACTIVE') DESC, updated_at DESC
+ON CONFLICT (tenant_id, slug) DO UPDATE SET
+  display_name = EXCLUDED.display_name, condition_note = EXCLUDED.condition_note, state = EXCLUDED.state,
+  archived_by = EXCLUDED.archived_by, archived_at = EXCLUDED.archived_at, updated_at = EXCLUDED.updated_at
+  WHERE EXCLUDED.updated_at > creator_os.player_segment_catalog.updated_at;
+```
+
+Kiểm: câu dưới phải ra **0** (không có cặp đơn vị, nhóm nào của bảng cũ mà bảng mới thiếu). Ra khác 0 thì dừng, không chạy image mới, báo hỗ trợ (mục 8).
+
+```sql
+SELECT count(*) AS thieu
+  FROM (SELECT DISTINCT tenant_id, slug FROM creator_os.integration_segment_catalog) o
+ WHERE NOT EXISTS (SELECT 1 FROM creator_os.player_segment_catalog n WHERE n.tenant_id = o.tenant_id AND n.slug = o.slug);
+```
+
+Rồi đối chiếu số dòng: `SELECT (SELECT count(*) FROM creator_os.player_segment_catalog) AS bang_moi, (SELECT count(*) FROM (SELECT DISTINCT tenant_id, slug FROM creator_os.integration_segment_catalog) x) AS cap_o_bang_cu;` thì `bang_moi` phải **lớn hơn hoặc bằng** `cap_o_bang_cu` (bảng mới còn giữ nhóm khai ở v1.3.1 mà bảng cũ không có). Nhóm đã gắn trên người chơi không đổi; hai bài kiểm tự động (`player-segment-reverse-copy-runbook.test.ts`) chạy thật cả hai đoạn SQL này.
+
 ---
 
 ## 8. Cần hỗ trợ

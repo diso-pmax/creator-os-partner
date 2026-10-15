@@ -39,6 +39,18 @@ có gì thì ghi *"không"*, đừng bỏ trống:
 
 Không đổi.
 
+## v1.3.1-rc.1 — 2026-10-15
+
+**v1.3.1-rc.1: nhóm người chơi do ĐƠN VỊ tự khai.** Nâng từ v1.3.0 lên, không cần đổi biến môi trường.
+
+- 🔴 **Ba migration mới, trong đó MỘT có đổi cấu trúc và sao chép dữ liệu**, chạy MỘT lần bằng image mới với tài khoản migration (mục 4 của [upgrade.md](upgrade.md)): `20261013140000_5457_player_segment_permissions` và `20261013140100_5457_marketing_player_segment_read` (chỉ thêm hai mã quyền và gán vai, chạy lại vô hại), `20261013150000_5457_player_segment_catalog` (bảng mới `player_segment_catalog` + **sao chép** nhóm người chơi đã khai sang bảng mới).
+- 🔴 **Tài khoản migration phải có `BYPASSRLS`** (mục 4d của [upgrade.md](upgrade.md); đã là yêu cầu từ v1.3.0, nên đã nâng v1.3.0 đúng thì có sẵn). Lý do riêng của lần này: migration `…150000` đọc nhóm của MỌI đơn vị từ bảng có bảo mật theo hàng; tài khoản thiếu thuộc tính này đọc về 0 hàng và **khối tự kiểm cuối dừng triển khai** với lỗi `5457 player_segment_catalog: N (unit, slug) pairs were not copied`. Kiểm trước bằng lệnh ở mục 4d: `rolbypassrls` phải là `t`. Là `f` thì dừng, không chạy migration.
+- 🟡 **Quay lui về v1.3.0 bằng image cũ vẫn được**: bảng cũ `integration_segment_catalog` và `integration_segment_unseen` **giữ nguyên, không ghi nữa**. Điều mất: nhóm khai MỚI sau khi lên v1.3.1 chỉ nằm ở bảng mới, image cũ không biết, các mã đó thành "nhóm lạ" (không gắn cho người chơi, vẫn không làm hỏng lượt vào game). Muốn image cũ vẫn áp các nhóm đó thì **trước khi quay lui** chạy đoạn sao chép ngược ở mục 7b của [upgrade.md](upgrade.md). **Lên lại v1.3.1 sau khi đã quay lui thì PHẢI làm mục 7c** (`migrate deploy` không chạy lại migration đã ghi, nên nhóm khai trong thời gian chạy v1.3.0 không tự vào bảng mới). Nhóm đã gắn trên người chơi không đổi (bảng xếp hạng lọc theo chuỗi mã nhóm), mọi mùa đã chạy không đổi kết quả.
+- 🟡 **Danh mục nhóm giờ là của đơn vị, không còn của từng tích hợp.** Nhóm khai qua cổng nền tảng của một tích hợp dùng được ở mọi tích hợp của cùng đơn vị; trần 50 nhóm đang dùng và 200 hàng tính cho cả đơn vị (đơn vị mỗi cổng một tích hợp thì số thực tế không đổi). Khai một mã mà nhóm cũ đã **lưu trữ** nay trả `409 SEGMENT_ARCHIVED` (trước là `SEGMENT_SLUG_EXISTS`); trùng nhóm đang dùng vẫn `SEGMENT_SLUG_EXISTS`. Hợp đồng gọi API của ứng dụng gửi nhóm **không đổi**.
+- 🟡 **Nhật ký đổi tên sự kiện:** thao tác khai, sửa, lưu trữ, khôi phục nhóm ghi `player_segment.declared`, `…updated`, `…archived`, `…restored` (đối tượng là đơn vị; qua cổng nền tảng payload có `viaIntegrationId`). Các dòng cũ `integration.segment_*` giữ trong lịch sử: **truy vấn nhật ký phải tìm cả hai tiền tố**.
+- 🟢 **Hai mã quyền mới** `player_segment:read` và `player_segment:manage` (migration gán sẵn: quản trị đơn vị và vận hành đơn vị có cả hai, Marketing đơn vị chỉ `read`; vai tuỳ biến do đơn vị tự cấp).
+- 🟡 **`GET /api/v1/license/status` gọi thẳng được, không cần đăng nhập và không cần đơn vị**: trả `status` (`ACTIVE`, `GRACE`, `EXPIRED`, `INVALID`, `ABSENT`, `WRONG_DEPLOYMENT`), `expiresAt`, `graceEndsAt`, `features`, `deploymentId` và `publicKeyFingerprint`. Không trả `LICENSE_KEY`, khoá công khai hay `iss`. Ở v1.3.0 đường này đòi đăng nhập, nên lệnh `curl -s http://<host>:4700/api/v1/license/status` trong [upgrade.md](upgrade.md) ăn 400/401; từ bản này chạy được không token. Không có biến môi trường mới.
+
 ## v1.3.0 — 2026-10-12
 
 **Nâng THẲNG từ v1.0.6 lên v1.3.0.** Mục này **cộng dồn** mọi việc người nâng từ v1.0.6 phải làm: bỏ qua v1.0.7, v1.1.0, v1.2.0 và các bản `-rc` đã phát hành trước đó, làm theo một mục này là đủ. Các mục `v1.3.0-rc.*`, `v1.2.0-rc.*`, `v1.1.0`, `v1.0.7` bên dưới giữ nguyên để tra từng thay đổi.
