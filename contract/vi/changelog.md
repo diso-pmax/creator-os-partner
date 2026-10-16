@@ -23,6 +23,10 @@ tìm ra.
 
 ## Chưa phát hành
 
+Không đổi.
+
+## v1.4.0-rc.3 — 2026-10-16
+
 🟡 **ĐỔI NGHĨA — cách gửi thông báo tất toán của chiến dịch Reward (từ bản phát hành mang "Chi trả reward").** Thông báo không còn được đẩy trong một yêu cầu dài: ops của chúng tôi bấm một nút **Chi trả** và lượt chạy diễn ra **ở nền**, với nhịp mặc định **10 thông báo mỗi giây cho mỗi tích hợp** (chỉnh được theo từng đơn vị), và **tự tạm dừng sau 20 lần gửi lỗi liên tiếp** (không trả lời trong 10 giây, hoặc trả lời khác `2xx`, `409`, `422`) cho tới khi ops tiếp tục. **Thân thông báo, chữ ký và các câu trả lời chúng tôi đọc không đổi**: bộ nhận dựng theo [settlement.md](./settlement.md) vẫn chạy. Điều đổi với bạn: trả lời nhanh (dưới 10 giây), và báo chúng tôi trước khi bảo trì có kế hoạch. Mới ở settlement.md: lối đi từng bước dựng bộ nhận và lên chính thức (§7), và khuyến nghị cộng tối đa một lần cho mỗi `settlementItemId` trong sổ của bạn.
 
 ## v1.4.0-rc.2 — 2026-10-16
@@ -34,6 +38,10 @@ Không đổi.
 🟡 **Bổ sung cho v1.3.0:** **`GET /launch` trả lời trình duyệt của người chơi khác đi khi mã launch hỏng.** Khi yêu cầu có `Accept: text/html` (điều hướng trang bình thường) và mã không tồn tại, đã hết hạn hoặc đã dùng rồi, chúng tôi trả `302` sang màn `/entry?reason=launch_invalid` của chính game; khi năng lực chưa bật cho chiến dịch thì `302` sang `/entry?reason=launch_unavailable`. Mọi bên gọi khác (API client, curl, kiểm tra phía máy chủ của bạn, bộ conformance) vẫn nhận `401 INVALID_LAUNCH_CODE` / `403 feature_disabled` như đã công bố. Một số thư viện HTTP mặc định gửi `text/html`: hãy đặt rõ `Accept: application/json` nếu bạn gọi URL này từ máy chủ ([campaign-launch.md](./campaign-launch.md)).
 
 🟢 **CỘNG THÊM:** **câu trả lời cho một gói tất toán có thể mang kết quả (`settlement-result.v1`).** Khi câu trả lời của bạn là `200`, `application/json`, tối đa 4 KB và đúng khuôn ở [settlement.md §2.2a](./settlement.md#22a-kết-quả-ngay-trong-câu-trả-lời-tuỳ-chọn--settlement-resultv1), dòng được khép ngay: khớp khi `amountMinor` và `currency` bằng số đã đóng dấu, hoặc hiện "đối tác báo lệch" khi không bằng. Nếu bạn vẫn trả `2xx` với thân bất kỳ thì không có gì đổi: `200` trơn vẫn chỉ là "đã nhận" và kết quả vẫn về bằng `POINT_REDEEMED`. Một `redemptionRef` chỉ được ghi một lần dù đến bằng đường nào.
+
+## v1.3.1 — 2026-10-15
+
+🟡 **Nhóm người chơi (`segments`): đơn vị tự khai, danh mục thuộc về đơn vị.** Hợp đồng trên đường truyền không đổi (cùng thân, cùng `200`, cùng `400`). Thứ đổi là ai khai và một lần khai với tới đâu: **đơn vị chạy chiến dịch** khai nhóm của mình trên Console của đơn vị, và nhóm đã khai gửi được từ **mọi tích hợp của đơn vị đó** (trước đây nhóm khai theo từng tích hợp, do Diso khai). Các nhóm đã khai trước bản này được chuyển nguyên mã sang danh mục của đơn vị, nên mã bạn đang gửi vẫn được gắn như cũ; từ nay mã do **đơn vị** đưa cho bạn (không phải Diso), và đơn vị tự khai thêm hoặc lưu trữ trên Console của mình. Mã đúng khuôn mà đơn vị chưa khai, hoặc đã lưu trữ, vẫn không phải lỗi: launch thành công và nhóm đó không được gắn. Xem quy tắc ở [campaign-launch.md §4.1a](./campaign-launch.md#41a-nhóm-người-chơi-segments), gồm cả giới hạn (50 nhóm đang dùng, 200 tổng cộng mỗi đơn vị) và việc lưu trữ làm gì.
 
 ## v1.3.1-rc.1 — 2026-10-15
 

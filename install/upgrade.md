@@ -70,12 +70,14 @@ docker run --rm --network none --env-file .env --entrypoint sh <kho ảnh Diso c
 |---|---|---|
 | `0` | đạt | `OK: required variables present, no forbidden setting` |
 | `1` | thiếu biến phải CÓ | `REQUIRED: <tên> MISSING` cho từng biến thiếu (`JWT_SECRET`, `INTERNAL_API_SECRET`) |
-| `2` | còn biến/giá trị bị cấm | `FORBIDDEN: DEV_FIXED_OTP SET` (khi `APP_ENV` khác `develop`), `FORBIDDEN: PARTNER_SANDBOX_ENABLED SET` (khi `APP_ENV` không phải `develop` hay `staging`, tức `release`, `partner` hoặc để trống), hoặc `FORBIDDEN: AUTH_PROVIDER_MODE=mock SET` |
+| `2` | còn biến/giá trị bị cấm | `FORBIDDEN: DEV_FIXED_OTP SET` (khi `APP_ENV` khác `develop`), `FORBIDDEN: PARTNER_SANDBOX_ENABLED SET` (khi `APP_ENV` không phải `develop` hay `staging`, tức `release`, `partner` hoặc để trống), `FORBIDDEN: PARTNER_EGRESS_TEST_ORIGINS SET` (khi `NODE_ENV` không phải `test`/`development` HOẶC `APP_ENV` không phải `local`/`ci`/`test`; xem khung bên dưới), hoặc `FORBIDDEN: AUTH_PROVIDER_MODE=mock SET` |
 | `3` | cả hai | cả hai loại dòng trên |
 | `4` | `PLATFORM_BASE_DOMAINS` đã đặt nhưng không phần tử nào dùng được | `PLATFORM_BASE_DOMAINS: …is set but no entry is a usable base hostname…` kèm cách sửa. Container mới sẽ **từ chối khởi động** với cùng lý do |
 | `5`, `6`, `7` | mã `4` cộng với `1` và/hoặc `2` | các loại dòng tương ứng |
 
 Ngoài bảng trên, lệnh còn in dòng `WARN: PLATFORM_BASE_DOMAINS entry '<giá trị gốc>' is used as '<giá trị dùng>' (…)` hoặc `… is not used (…)` cho từng phần tử của `PLATFORM_BASE_DOMAINS` phải sửa hình dạng hoặc bị bỏ. Dòng `WARN` **không** đổi mã thoát, nhưng nên sửa `.env` cho sạch: container mới in đúng các dòng này lúc khởi động.
+
+🔴 **`PARTNER_EGRESS_TEST_ORIGINS` không bao giờ được đặt ở môi trường thật** (production, staging, develop, và cả image khách tự lưu trữ). Biến này chỉ dành cho sân kiểm thử L4 do `e2e/boot-flow.sh` dựng: nó mở lớp chặn gọi ra địa chỉ nội bộ cho vài origin loopback. Một image khách tự lưu trữ **có thể chạy với `NODE_ENV=development`**, nên `NODE_ENV` một mình không đủ để tin; lớp chặn thật là **`APP_ENV`**: biến chỉ có hiệu lực khi `APP_ENV` là `local`, `ci` hoặc `test` (và `NODE_ENV` là `test` hoặc `development`), còn đặt ở nơi khác thì API và worker **từ chối khởi động** và lệnh trên báo mã `2`. Gặp dòng `FORBIDDEN: PARTNER_EGRESS_TEST_ORIGINS SET` thì **xoá biến khỏi cấu hình chạy**, đừng đổi `APP_ENV` cho qua.
 
 Mã khác `0` thì **dừng**: sửa `.env` rồi chạy lại, chưa đi tiếp. Lệnh này kiểm ba nhóm luật đó (biến bắt buộc, biến bị cấm, `PLATFORM_BASE_DOMAINS`), không thay lớp chặn lúc khởi động.
 

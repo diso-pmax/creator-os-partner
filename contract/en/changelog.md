@@ -22,6 +22,10 @@ such as "contract 1.4.0" still leads here.
 
 ## Unreleased
 
+No changes.
+
+## v1.4.0-rc.3 — 2026-10-16
+
 🟡 **CHANGED MEANING — how a Reward campaign's settlement notifications are sent (from the release that carries "Pay reward").** Notifications are no longer pushed in one long request: our ops presses one **Pay** button and the run goes **in the background**, at a default pace of **10 notifications per second per integration** (adjustable per unit), and it **pauses by itself after 20 failed sends in a row** (no answer in 10 seconds, or any answer other than `2xx`, `409`, `422`) until our ops resumes it. **The notification body, the signature and the answers we read are unchanged**: a receiver built to [settlement.md](./settlement.md) keeps working. What changes for you: answer quickly (well under 10 seconds), and tell us before a planned outage. Also new in settlement.md: a step-by-step path to build the receiver and go live (§7), and the advice to apply a line at most once per `settlementItemId` in your own records.
 
 ## v1.4.0-rc.2 — 2026-10-16
@@ -33,6 +37,10 @@ No changes.
 🟡 **Addition to v1.3.0:** **`GET /launch` answers a player's browser differently when the launch code is bad.** When the request carries `Accept: text/html` (a normal page navigation) and the code does not exist, has expired or was already consumed, we answer `302` to the game's own `/entry?reason=launch_invalid` screen; when the capability is not enabled for the campaign, `302` to `/entry?reason=launch_unavailable`. Any other caller (an API client, curl, your server-side check, the conformance suite) still gets the published `401 INVALID_LAUNCH_CODE` / `403 feature_disabled`. Some HTTP libraries send `text/html` by default: set `Accept: application/json` explicitly if you call this URL from your server ([campaign-launch.md](./campaign-launch.md)).
 
 🟢 **ADDITIVE:** **the answer to a settlement packet may carry the result (`settlement-result.v1`).** When your answer is `200`, `application/json`, at most 4 KB and has exactly the shape of [settlement.md §2.2a](./settlement.md#22a-the-result-in-the-answer-optional--settlement-resultv1), the line is closed right away: matched when `amountMinor` and `currency` equal the stamped amount, or shown as "partner reported a difference" when they do not. Nothing changes for you if you keep answering `2xx` with any body: a bare `200` is still only "received" and the result still reaches us with `POINT_REDEEMED`. One `redemptionRef` is recorded once whichever way it arrives.
+
+## v1.3.1 — 2026-10-15
+
+🟡 **Player groups (`segments`): the unit declares them, and the catalog belongs to the unit.** The wire contract does not change (same body, same `200`, same `400`). What changes is who declares and how far a declaration reaches: the **unit that runs the campaign** declares its groups in its own Console, and a group it declared can be sent from **every integration of that unit** (before, a group was declared per integration, by Diso). Groups declared before this release are carried over to the unit's catalog with the same codes, so the codes you already send keep attaching; from now on the codes come from **the unit** (not from Diso), which declares and archives them in its own Console. A well-formed code the unit has not declared, or has archived, is still not an error: the launch succeeds and that group is not attached. Read [campaign-launch.md §4.1a](./campaign-launch.md#41a-player-groups-segments) for the rules, including the limits (50 active, 200 in total per unit) and what archiving does.
 
 ## v1.3.1-rc.1 — 2026-10-15
 
