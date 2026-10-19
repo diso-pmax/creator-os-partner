@@ -698,14 +698,15 @@ async function banSettlement(
   cf: CauHinh,
   goi: GoiHttp,
   than: Record<string, unknown>,
-  bad?: { signature?: string; tsSeconds?: number; redirect?: 'follow' | 'manual'; timeoutMs?: number; secret?: string },
+  bad?: { signature?: string; tsSeconds?: number; redirect?: 'follow' | 'manual'; timeoutMs?: number; secret?: string; url?: string },
 ): Promise<PhanHoi> {
-  if (!cf.settlementUrl || !cf.settlementSecret) throw new Error('settlementUrl and settlementSecret are required for the SETTLEMENT cases');
-  const u = new URL(cf.settlementUrl);
+  const target = bad?.url ?? cf.settlementUrl;
+  if (!target || !cf.settlementSecret) throw new Error('settlementUrl (or settlementTestUrl for the test door) and settlementSecret are required for the SETTLEMENT cases');
+  const u = new URL(target);
   const pathAndQuery = `${u.pathname}${u.search}`;
   const raw = JSON.stringify(than);
   const ts = bad?.tsSeconds ?? Math.floor(Date.now() / 1000);
-  return goi(cf.settlementUrl, {
+  return goi(target, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -857,6 +858,44 @@ export const CA_SETTLEMENT_ROTATION: Ca = {
         );
   },
 };
+
+/**
+ * The two TEST DOOR cases (contract section 2.3). Like the rotation case they are NOT part of the eight: they run only when
+ * `settlementTestUrl` (`CONF_SETTLEMENT_TEST_URL`) is set. The body is exactly what the platform sends on a trial: `{schemaVersion, deliveryNonce}`,
+ * no player, no points, no money. Signed with the SETTLEMENT secret like a packet, so the one thing a trial proves is that our signature reaches you intact.
+ */
+function corpoTest(): Record<string, unknown> {
+  return { schemaVersion: 'settlement-test.v1', deliveryNonce: `conf-test-${randomUUID()}` };
+}
+
+export const CA_SETTLEMENT_TEST: readonly Ca[] = [
+  {
+    ma: 'SETTLEMENT-T1',
+    chieu: 'SETTLEMENT',
+    ten: 'test door: correctly signed settlement-test.v1 => 2xx',
+    capNangLuc: null,
+    async chay(cf, goi) {
+      if (!cf.settlementTestUrl) return truot('CONF_SETTLEMENT_TEST_URL is not set');
+      const r = await banSettlement(cf, goi, corpoTest(), { url: cf.settlementTestUrl });
+      return is2xx(r)
+        ? dat()
+        : truot(`expected 2xx from the test door, got ${r.status}; the test door only checks the signature and answers 2xx, it books nothing`);
+    },
+  },
+  {
+    ma: 'SETTLEMENT-T2',
+    chieu: 'SETTLEMENT',
+    ten: 'test door: wrong signature => 401 (403 accepted)',
+    capNangLuc: null,
+    async chay(cf, goi) {
+      if (!cf.settlementTestUrl) return truot('CONF_SETTLEMENT_TEST_URL is not set');
+      const r = await banSettlement(cf, goi, corpoTest(), { url: cf.settlementTestUrl, signature: `sha256=${'0'.repeat(64)}` });
+      return isAuthRefusal(r)
+        ? dat()
+        : truot(`expected 401 (403 accepted), got ${r.status}; a test door that answers 2xx to a wrong signature proves nothing about your verification`);
+    },
+  },
+];
 
 export const CA_SETTLEMENT: readonly Ca[] = SETTLEMENT;
 export const SO_CA_SETTLEMENT = SETTLEMENT.length;

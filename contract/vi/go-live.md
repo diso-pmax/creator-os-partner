@@ -62,10 +62,14 @@ lại ở đây.
 
 ### A.5 Kênh SETTLEMENT *(chỉ khi bạn nhận tất toán điểm)*
 
+- [ ] Bạn đã dựng **hai** endpoint và đưa ops của chúng tôi **hai** địa chỉ `https://` **khác nhau**: địa chỉ nhận tất toán và **cửa gọi thử** ([settlement.md §2.3](./settlement.md#23-cửa-gọi-thử--post-địa-chỉ-gọi-thử-của-bạn))
+- [ ] 🔒 Cửa gọi thử kiểm `PartnerSettlementSignatureV1` trên thân **thô**, trả `2xx` trong 10 giây và không làm gì khác: không chi trả, không ghi sổ, không tra người dùng. Chữ ký sai hoặc thiếu bị từ chối bằng `4xx`
+- [ ] 🔒 Bộ nhận tất toán **thật** của bạn từ chối thân gọi thử bằng `4xx` (nó không có trường tất toán nào): không bao giờ coi một thân thiếu trường là gói hợp lệ
+- [ ] Lần tự gọi thử trên sandbox ([testing.md §1.7](./testing.md#17-tự-gọi-cửa-gọi-thử-của-bạn-chỉ-ở-sân-sandbox)) trả `SENT_OK`
 - [ ] 🔒 Bộ nhận của bạn kiểm `PartnerSettlementSignatureV1` trên thân **thô**, trong ±5 phút ([settlement.md](./settlement.md))
 - [ ] 🔒 Bộ nhận từ chối `deliveryNonce` đã thấy bằng **`409`**, và nhớ nonce qua các lần khởi động lại
 - [ ] Khoá khử trùng là `deliveryNonce`, không bao giờ là `settlementItemId`
-- [ ] Các ca SETTLEMENT của bộ kiểm hợp chuẩn đạt **8/8** với bộ nhận của bạn (xem testing.md)
+- [ ] Các ca SETTLEMENT của bộ kiểm hợp chuẩn đạt **8/8** với bộ nhận của bạn, và `SETTLEMENT-T1` cùng `SETTLEMENT-T2` đạt với cửa gọi thử của bạn khi đặt `CONF_SETTLEMENT_TEST_URL` (xem testing.md §1.6)
 - [ ] Bạn trả lời trong 10 giây và không bao giờ bằng chuyển hướng; địa chỉ đã khai là địa chỉ cuối cùng
 - [ ] 🔒 Secret SETTLEMENT khác mọi secret kênh khác và chỉ nằm ở máy chủ nhận
 
@@ -85,6 +89,7 @@ Hai quy tắc trước: **không bao giờ dán secret** (`masterSecret` hay kho
 | Bạn thấy | Nguyên nhân thường gặp | Làm gì |
 |---|---|---|
 | không có gì tới điểm cuối của bạn | phía chúng tôi chưa khai địa chỉ, hoặc ops chưa bấm Gửi | hỏi đầu mối của bạn xem địa chỉ đã khai và đợt đã chốt chưa |
+| ops của chúng tôi thấy `not_ready_test_endpoint`, hoặc lượt **Chi trả** dừng ở bước đầu | địa chỉ cửa gọi thử chưa khai, trùng địa chỉ nhận tất toán, hoặc cửa gọi thử của bạn không trả `2xx` trong 10 giây (bước đầu của mỗi lượt là một lượt gọi tới nó, [settlement.md §2.3](./settlement.md#23-cửa-gọi-thử--post-địa-chỉ-gọi-thử-của-bạn)) | đưa đầu mối một địa chỉ gọi thử **khác** địa chỉ nhận tất toán, kiểm cửa trả `2xx` cho lượt gọi ký đúng, rồi nhờ họ chạy lại: chưa có dòng nào được gửi trước khi dừng |
 | bạn trả `401` cho chúng tôi | sai secret cho `X-Platform-Key-Id` đó, đồng hồ lệch (±5 phút), hoặc proxy viết lại đường dẫn | kiểm theo đường dẫn đúng như đã gửi, kiểm NTP; chúng tôi không gửi lại khi `401` |
 | bạn trả `5xx` hoặc hết giờ | phía bạn sập hoặc chậm (>10 giây) | sửa rồi báo chúng tôi: ops gửi lại dòng đó với nonce **mới**. Trước khi xử lý một gói, kiểm sổ của bạn theo `settlementItemId`: nếu đã trả dòng đó rồi thì đừng trả lại, báo chúng tôi để ghi nhận bằng `POINT_REDEEMED` |
 | bạn trả `409` cho một lượt **lặp** (ops của chúng tôi bấm "Hỏi lại đối tác": cùng gói, cùng nonce) | bạn đã nhận rồi | không cần làm gì, chúng tôi ghi dòng là đã nhận |

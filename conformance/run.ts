@@ -1,5 +1,5 @@
 import { hkdfSync } from 'node:crypto';
-import { CA_BAT_BUOC, CA_LAUNCH, CA_SETTLEMENT, CA_SETTLEMENT_ROTATION, SO_CA_LAUNCH, SO_CA_RA, SO_CA_SETTLEMENT, SO_CA_VAO } from './cases';
+import { CA_BAT_BUOC, CA_LAUNCH, CA_SETTLEMENT, CA_SETTLEMENT_ROTATION, CA_SETTLEMENT_TEST, SO_CA_LAUNCH, SO_CA_RA, SO_CA_SETTLEMENT, SO_CA_VAO } from './cases';
 import { ketQuaVaoCua, nangLucDaChungMinh, type CauHinh, type GoiHttp, type KetQuaCa } from './contract';
 
 /**
@@ -116,9 +116,12 @@ export async function chayLaunch(cf: CauHinh, goi: GoiHttp = goiThat): Promise<K
 export async function chaySettlement(cf: CauHinh, goi: GoiHttp = goiThat): Promise<KetQuaCa[]> {
   const kq: KetQuaCa[] = [];
   // The rotation case needs the OLD secret, so it runs only when the integrator supplies it; the eight base cases always run.
-  const cases = cf.settlementPreviousSecret ? [...CA_SETTLEMENT, CA_SETTLEMENT_ROTATION] : CA_SETTLEMENT;
+  // The two test door cases run only when the test door address is given, on their own: a partner may check the door before the receiver.
+  const base = cf.settlementPreviousSecret ? [...CA_SETTLEMENT, CA_SETTLEMENT_ROTATION] : CA_SETTLEMENT;
+  const cases = cf.settlementTestUrl ? [...base, ...CA_SETTLEMENT_TEST] : base;
   for (const ca of cases) {
-    if (!cf.settlementUrl) {
+    const isTestDoor = CA_SETTLEMENT_TEST.some((t) => t.ma === ca.ma);
+    if (!isTestDoor && !cf.settlementUrl) {
       kq.push({ ...ca, dat: false, vi: 'SKIPPED — CONF_SETTLEMENT_URL is not set' });
       continue;
     }
@@ -130,6 +133,16 @@ export async function chaySettlement(cf: CauHinh, goi: GoiHttp = goiThat): Promi
     }
   }
   return kq;
+}
+
+/**
+ * Exit code of a run. A case reported as SKIPPED (its address was not given) is "not run", not a failure: a partner who only gives
+ * `CONF_SETTLEMENT_TEST_URL` runs the two test door cases alone, and when those pass the exit code is 0. A skipped case never counts as
+ * a pass either, so a run where NOTHING passed (everything skipped) still exits 1. Any case that ran and failed exits 1.
+ */
+export function maThoat(kq: readonly KetQuaCa[]): 0 | 1 {
+  const daChay = kq.filter((c) => !(!c.dat && /^SKIPPED/.test(c.vi)));
+  return daChay.length > 0 && daChay.every((c) => c.dat) ? 0 : 1;
 }
 
 export function inBaoCaoSettlement(kq: readonly KetQuaCa[]): string {
@@ -255,8 +268,10 @@ function tuMoiTruong(): CauHinh {
     launchCampaignId: can('CONF_LAUNCH_CAMPAIGN_ID'),
     // Optional axis: set CONF_SETTLEMENT_URL to run the 8 SETTLEMENT cases against your receiver.
     settlementUrl: process.env.CONF_SETTLEMENT_URL || undefined,
-    settlementSecret: process.env.CONF_SETTLEMENT_URL ? khoaKenh('SETTLEMENT', 'CONF_SETTLEMENT_SECRET', 'CONF_SETTLEMENT_VERSION', true) : undefined,
+    settlementSecret: process.env.CONF_SETTLEMENT_URL || process.env.CONF_SETTLEMENT_TEST_URL ? khoaKenh('SETTLEMENT', 'CONF_SETTLEMENT_SECRET', 'CONF_SETTLEMENT_VERSION', true) : undefined,
     settlementKeyId: process.env.CONF_SETTLEMENT_KEY_ID || undefined,
+    // Optional: the partner's TEST door. Set it to add SETTLEMENT-T1 and SETTLEMENT-T2.
+    settlementTestUrl: process.env.CONF_SETTLEMENT_TEST_URL || undefined,
     // Optional: the secret a rotation replaces. Set it to add the rotation case (SETTLEMENT-9).
     settlementPreviousSecret: process.env.CONF_SETTLEMENT_URL ? process.env.CONF_SETTLEMENT_PREVIOUS_SECRET || undefined : undefined,
   };
@@ -276,16 +291,15 @@ function tuMoiTruong(): CauHinh {
 // Chạy trực tiếp thì thi hành; `import` thì không. Giữ file vừa là thư viện vừa là lệnh.
 if (process.argv[1] && process.argv[1].endsWith('run.ts')) {
   const cf = tuMoiTruong();
-  Promise.all([chayHopChuan(cf), chayLaunch(cf), cf.settlementUrl ? chaySettlement(cf) : Promise.resolve([] as KetQuaCa[])])
+  Promise.all([chayHopChuan(cf), chayLaunch(cf), cf.settlementUrl || cf.settlementTestUrl ? chaySettlement(cf) : Promise.resolve([] as KetQuaCa[])])
     .then(([kq, kqLaunch, kqSettlement]) => {
       console.log(inBaoCao(kq));
       console.log('');
       console.log(inBaoCaoLaunch(kqLaunch));
       console.log('');
-      console.log(cf.settlementUrl ? inBaoCaoSettlement(kqSettlement) : 'SETTLEMENT CHANNEL — not run (set CONF_SETTLEMENT_URL to test your settlement receiver)');
+      console.log(cf.settlementUrl || cf.settlementTestUrl ? inBaoCaoSettlement(kqSettlement) : 'SETTLEMENT CHANNEL — not run (set CONF_SETTLEMENT_URL to test your settlement receiver, CONF_SETTLEMENT_TEST_URL to test your test door)');
       // 🔴 Mã thoát KHÁC 0 khi có ca trượt Ở BẤT KỲ bộ nào — "không có ô gần đạt" áp cho CẢ HAI.
-      const tatCa = [...kq, ...kqLaunch, ...kqSettlement];
-      process.exit(tatCa.every((c) => c.dat) ? 0 : 1);
+      process.exit(maThoat([...kq, ...kqLaunch, ...kqSettlement]));
     })
     .catch((e) => {
       console.error(`KHÔNG chạy được: ${String((e as Error)?.message ?? e)}`);

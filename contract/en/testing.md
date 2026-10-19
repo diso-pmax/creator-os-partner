@@ -190,8 +190,9 @@ CONF_SETTLEMENT_SECRET=<your SETTLEMENT channel secret> \
 
 | Variable | Required | Note |
 |---|:--:|---|
-| `CONF_SETTLEMENT_URL` | to run the axis | absent ⇒ the SETTLEMENT cases are reported as **not run** (never as passed) |
-| `CONF_SETTLEMENT_SECRET` | ✅ when the URL is set | or set `CONF_MASTER_SECRET` and the suite derives the SETTLEMENT key itself (`CONF_SETTLEMENT_VERSION` picks the version, default `1`) |
+| `CONF_SETTLEMENT_URL` | to run the eight cases | absent ⇒ the eight cases are reported as **not run** (`SKIPPED`, never as passed) |
+| `CONF_SETTLEMENT_TEST_URL` | to run the two **test door** cases | the address of **your test door** ([settlement.md §2.3](./settlement.md#23-the-test-door--post-your-test-endpoint)), a **different** address from the settlement URL. Set ⇒ the suite adds `SETTLEMENT-T1` and `SETTLEMENT-T2` (below). It works alone: with only this variable the two door cases run and the eight report `SKIPPED` |
+| `CONF_SETTLEMENT_SECRET` | ✅ when either URL is set | or set `CONF_MASTER_SECRET` and the suite derives the SETTLEMENT key itself (`CONF_SETTLEMENT_VERSION` picks the version, default `1`). The same key signs the eight cases and the two door cases |
 | `CONF_SETTLEMENT_KEY_ID` | no | sent as `X-Platform-Key-Id`; default `conformance-settlement` |
 | `CONF_SETTLEMENT_PREVIOUS_SECRET` | no | the secret a rotation replaces. When set, the suite adds a **ninth** case, `SETTLEMENT-9` (below) |
 
@@ -206,8 +207,10 @@ CONF_SETTLEMENT_SECRET=<your SETTLEMENT channel secret> \
 | `SETTLEMENT-7` | reply time | within 10 seconds |
 | `SETTLEMENT-8` | redirect | no `3xx`; declare the final URL |
 | `SETTLEMENT-9` *(optional)* | signed with the **previous** secret, under the **same** `X-Platform-Key-Id` | `2xx` — during a rotation your receiver must keep BOTH secrets and try them newest first |
+| `SETTLEMENT-T1` *(test door)* | a correctly signed call to the test door with the body `{"schemaVersion":"settlement-test.v1","deliveryNonce":"<uuid>"}` | `2xx` |
+| `SETTLEMENT-T2` *(test door)* | the same call with a **wrong signature** | `401` (`403` accepted) — a test door that answers `2xx` to a wrong signature proves nothing about your verification |
 
-`SETTLEMENT-9` runs only when `CONF_SETTLEMENT_PREVIOUS_SECRET` is set, so the eight cases above stay eight. The key id does not change between versions (see [settlement.md §3](./settlement.md#3-we-authenticate-ourselves-to-you--partnersettlementsignaturev1)), which is why a receiver that picks one secret per key id fails this case.
+`SETTLEMENT-9` runs only when `CONF_SETTLEMENT_PREVIOUS_SECRET` is set, and `SETTLEMENT-T1` and `SETTLEMENT-T2` only when `CONF_SETTLEMENT_TEST_URL` is set, so the eight cases above stay eight. The two test door cases call **only** the test door: they send no packet to the settlement URL, and they need no line, no player and no amount. The key id does not change between versions (see [settlement.md §3](./settlement.md#3-we-authenticate-ourselves-to-you--partnersettlementsignaturev1)), which is why a receiver that picks one secret per key id fails this case.
 
 `SETTLEMENT-3` matters more than it looks: when our operations team presses **Ask the partner again**, we
 resend the same packet with the same nonce and read `409` as "you already received it". Any other answer
@@ -215,7 +218,7 @@ there can make us send a settled amount twice.
 
 **A reference receiver is included**: `examples/node/settlement-receiver.mjs`
 (Node, no dependencies, MIT). It passes all 8 cases, remembers nonces in a JSON file across restarts, and
-prints every accepted packet. During a key rotation give it both secrets, newest first: `SETTLEMENT_SECRETS=<new>,<old>`. Check it without a network: `node examples/node/settlement-receiver.mjs --self-test`.
+prints every accepted packet. It also serves the **test door** at `/settlement-test` by default (`--test-path` or `TEST_PATH` changes it), so with the receiver on `http://localhost:8080` you can run `SETTLEMENT-T1` and `SETTLEMENT-T2` with `CONF_SETTLEMENT_TEST_URL=http://localhost:8080/settlement-test`. During a key rotation give it both secrets, newest first: `SETTLEMENT_SECRETS=<new>,<old>`. Check it without a network: `node examples/node/settlement-receiver.mjs --self-test`.
 
 `SETTLEMENT-2` and `SETTLEMENT-3` require **`409`** specifically for a repeated nonce: our "Ask the partner again" reads `409` as "already received". Answering `400`, `422` or an idempotent `200` instead makes those two cases fail.
 
@@ -223,11 +226,12 @@ Behind a reverse proxy, verify the signature against the path and query exactly 
 
 ⚠️ SETTLEMENT results are printed in their own block and are **not** part of the automated go-live gate in §1.3. The process still exits non-zero when a SETTLEMENT case fails, so treat that exit code accordingly in your own CI.
 
-### 1.7 Send yourself a test settlement notification (sandbox only)
+### 1.7 Call your test door (sandbox only)
 
-Instead of waiting for our operations team to press **Send**, you can ask the sandbox to send **one sample
-settlement notification** to the address you gave us ([settlement.md §2.0](./settlement.md)).
-It exists **only on the sandbox**: on any other cluster this route does not exist and answers `404`.
+Instead of waiting for our operations team to press **Test** or **Pay**, you can ask the sandbox to call **your test door**
+([settlement.md §2.3](./settlement.md#23-the-test-door--post-your-test-endpoint)) once, at the test address you gave us
+([settlement.md §2.0](./settlement.md#20-declaring-the-address)). It exists **only on the sandbox**: on any other cluster
+this route does not exist and answers `404`.
 
 ```bash
 BODY='{}'
@@ -239,24 +243,26 @@ curl -sS -X POST "https://<the host of the test environment we gave you>/api/v1/
 ```
 
 It is signed like an event, with your **EVENT** channel key ([event-ingestion.md §3](./event-ingestion.md#3-authentication)); the
-body is `{}`. You do not pass an address: we send to the one our operations team declared for your integration.
+body is `{}`. You do not pass an address: we call the test address our operations team declared for your integration.
 
 | Answer | Meaning |
 |---|---|
-| `{ "outcome": "SENT_OK", "httpStatus": 200, "code": "sent" }` | your receiver answered `2xx` |
-| `PARTNER_REJECTED` · `partner_rejected` | your receiver answered `409` or `422`. On the first test it must answer `2xx` |
-| `SEND_FAILED_HTTP` · `partner_unexpected_status` | any other code. Only `2xx` is "received" |
+| `{ "outcome": "SENT_OK", "httpStatus": 200, "code": "sent" }` | your test door answered `2xx` |
+| `PARTNER_REJECTED` · `partner_rejected` | your test door answered `409` or `422`. It must answer `2xx` |
+| `SEND_FAILED_HTTP` · `partner_unexpected_status` | any other code. Only `2xx` is a pass |
 | `SEND_FAILED_TIMEOUT` · `partner_unreachable` | no answer in 10 seconds, a connection error, or a redirect |
+| `NOT_CONFIGURED` · `not_ready_test_endpoint` | no test address is declared (or it is equal to the settlement address): ask our operations team to declare a **different** one |
 | `NOT_CONFIGURED` · `not_ready_integration` · `not_ready_endpoint` · `not_ready_key` · `not_ready_namespace` | the integration is not ready to send points yet: ask our operations team to finish the address and keys |
-| `429` | more than 6 test sends in a minute: wait for `Retry-After` |
+| `429` | more than 6 test calls in a minute: wait for `Retry-After` |
 
-What the sample looks like: the same packet as [settlement.md §2.1](./settlement.md#21-request-body), signed with your
-SETTLEMENT key, with batch reference starting **`SANDBOX-`**, `externalUserId` `sandbox-user` and a denomination that
-does not exist. **It is not a real line: do not book it in your own accounting.** It opens no batch on our side and
-changes nobody's balance.
+What we send: the signed `POST` of [settlement.md §2.3](./settlement.md#23-the-test-door--post-your-test-endpoint), whose body is
+exactly `{"schemaVersion":"settlement-test.v1","deliveryNonce":"<uuid>"}`, signed with your SETTLEMENT key. **Nothing is sent to your
+settlement address** and the call carries no user, no point and no amount: there is nothing to book, it opens no batch on our
+side and changes nobody's balance.
 
-What to check on your side: the first test send is answered `2xx`; the same `deliveryNonce` repeated is answered `409`
-(the cases of §1.6 check this); the signature is verified on the raw body.
+What to check on your side: a correctly signed call is answered `2xx`; the signature is verified on the raw body, and a wrong
+or missing signature is **refused** with a `4xx`; the call changes nothing in your records; and your real settlement receiver
+refuses the test body (it has none of the settlement fields).
 
 ---
 

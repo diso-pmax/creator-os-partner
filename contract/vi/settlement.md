@@ -28,13 +28,17 @@ phía bạn". Bạn tự quyết định làm gì với thông báo đó (cộng
 
 ### 2.0 Khai địa chỉ
 
-1. **Bạn** đưa cho ops của chúng tôi một URL (địa chỉ nhận `POST` của chúng tôi).
-2. **Ops của chúng tôi** nhập nó trên màn tích hợp của bạn, ở tab **Nhận điểm**. Khi chưa nhập, nút
-   **Chi trả** của ops bị khoá và ghi rõ vì sao — không có cách nào ép gọi.
+1. **Bạn** đưa cho ops của chúng tôi **hai** URL, mỗi URL một cửa: địa chỉ nhận `POST` tất toán của chúng tôi
+   (§2.1 và §2.2), và **cửa gọi thử** (§2.3), địa chỉ thứ hai chỉ để chứng minh chúng tôi gọi tới được bạn. **Hai
+   địa chỉ phải khác nhau** (§2.3).
+2. **Ops của chúng tôi** nhập cả hai trên màn tích hợp của bạn, ở tab **Nhận điểm**. Khi chưa nhập địa chỉ nhận
+   điểm, nút **Chi trả** của ops bị khoá và ghi rõ vì sao — không có cách nào ép gọi. Khi chưa nhập cửa gọi thử,
+   nút **Gọi thử** và bước đầu của mỗi lượt **Chi trả** trả `not_ready_test_endpoint`, và lượt chạy dừng ở đó,
+   không gửi một dòng nào.
 3. Địa chỉ phải là `https://` trên Internet công khai. Chúng tôi từ chối địa chỉ trỏ vào `localhost`,
    mạng riêng hay địa chỉ link-local, và địa chỉ có `user:mật-khẩu` trong đó (bí mật không nằm trong
    địa chỉ).
-4. **Giữ nguyên địa chỉ như bạn đưa**, từng ký tự: đường dẫn và query nằm trong chuỗi ký (§3).
+4. **Giữ nguyên từng địa chỉ như bạn đưa**, từng ký tự: đường dẫn và query nằm trong chuỗi ký (§3).
 
 Màn chỉ hiện **Sẵn sàng gửi điểm** khi đủ cả bốn điều kiện:
 
@@ -45,7 +49,8 @@ Màn chỉ hiện **Sẵn sàng gửi điểm** khi đủ cả bốn điều ki�
 | có **khoá SETTLEMENT dùng được** | lượt gọi được ký bằng nó (§3) |
 | tích hợp có **đúng một** nhà cấp danh tính ở các nguồn sự kiện `DIRECT` | chúng tôi phải biết `externalUserId` thuộc không gian định danh nào của bạn |
 
-Điều kiện nào thiếu sẽ hiện kèm lý do ngay cạnh nút **Chi trả**.
+Điều kiện nào thiếu sẽ hiện kèm lý do ngay cạnh nút **Chi trả**. Cửa gọi thử **không** thuộc bốn điều kiện này:
+nó có câu trả lời riêng, `not_ready_test_endpoint` (§2.3).
 
 ### 2.1 Thân request
 
@@ -159,6 +164,71 @@ rỗng, thân khác khuôn hoặc thân quá 4 KB chỉ là **"đã nhận"** (�
   toán, không giữ chính thân.
 - ⚠️ `2xx` vẫn chỉ nghĩa là "đã nhận". Chỉ khuôn trên mới nghĩa là "đã trả". Đừng ghi `result: "PAID"` trong
   câu trả lời cho một dòng bạn chưa trả.
+
+### 2.3 Cửa gọi thử — `POST <địa chỉ gọi thử của bạn>`
+
+Một endpoint thứ hai phía bạn, giống kiểm tra `/health` **nhưng có ký**. Nó trả lời đúng một câu hỏi: *nền tảng có gọi
+tới được bạn không, với chữ ký bạn chấp nhận, đúng giờ không?* Nó không bao giờ đụng tới người dùng, điểm hay số tiền.
+
+**Mọi lần "thử" của chúng tôi chỉ gọi cửa này, không gọi gì khác.** Chúng tôi không bao giờ gửi một gói giả vào địa chỉ
+nhận điểm (§2.1). Gồm: nút **Gọi thử** trên màn Chi trả, **bước đầu của mỗi lượt Chi trả** (và của **Tiếp tục**), nút gửi thử
+của chính nền tảng, và lần tự gọi thử trên sandbox bạn tự chạy
+([testing.md §1.7](./testing.md#17-tự-gọi-cửa-gọi-thử-của-bạn-chỉ-ở-sân-sandbox)).
+
+**Chúng tôi gửi gì:**
+
+```http
+POST <địa chỉ gọi thử của bạn>
+Content-Type: application/json
+X-Platform-Key-Id: …
+X-Platform-Timestamp: 1786698753
+X-Platform-Signature: sha256=…
+
+{"schemaVersion":"settlement-test.v1","deliveryNonce":"3f2a9c1e-…"}
+```
+
+- Thân có **đúng hai trường này** và không có trường nào khác: `schemaVersion` luôn là `"settlement-test.v1"` (đổi hình dạng
+  thì thành `settlement-test.v2`, `v1` không bao giờ đổi), `deliveryNonce` là một UUID v4 mới cho mỗi lần gọi. **Không có**
+  `externalUserId`, không có số điểm hay số tiền, không có mã đợt hay mã dòng.
+- Chữ ký **cùng khuôn với §3**, bằng khoá **SETTLEMENT**, và chuỗi ký dùng đường dẫn và query của **địa chỉ gọi thử của
+  bạn**, đúng như đã khai. Verify trên byte thô, trong ±5 phút, bằng cùng đoạn mã.
+
+**Bạn trả lời gì:**
+
+| Bạn trả | Chúng tôi hiểu là |
+|---|---|
+| `2xx` | **đạt** |
+| mã khác — `4xx`, `5xx` | **không đạt** |
+| không trả lời trong **10 giây**, lỗi kết nối, hoặc `3xx` (chúng tôi không bao giờ theo redirect) | **không đạt** |
+
+Chúng tôi **bỏ qua thân câu trả lời**. Trả `401` khi chữ ký không khớp: bộ conformance kiểm rằng lượt gọi có chữ ký sai bị
+**từ chối** (`SETTLEMENT-T2`, chấp nhận `403`) và lượt gọi đúng được trả `2xx` (`SETTLEMENT-T1`,
+[testing.md §1.6](./testing.md#16-kênh-settlement--8-ca-chạy-riêng)).
+
+**Cửa này không được làm gì:** chi trả, cộng hay ghi sổ bất cứ thứ gì, ghi một bản ghi, hay tra một người dùng. Không có gì
+để lưu: bạn không cần nhớ `deliveryNonce` (gọi lại vô hại, và mỗi lần nó đều mới).
+
+**Hai địa chỉ phải khác nhau, từng ký tự.** Chúng tôi từ chối lưu địa chỉ gọi thử trùng địa chỉ nhận điểm, và nếu hai
+địa chỉ về sau trùng nhau (địa chỉ nhận điểm bị đổi sau đó) thì lần thử coi như chưa khai và **không được gửi**:
+`not_ready_test_endpoint`. Hai địa chỉ chỉ khác nhau ở query vẫn là khác nhau, nên bạn có thể đưa cả hai cửa về một handler
+theo đường dẫn hoặc query. Nếu lỡ dán cùng một địa chỉ vào cả hai chỗ, bộ nhận **thật** của bạn vẫn phải từ chối thân này: nó
+không có trường tất toán nào (§2.1), nên bộ nhận kiểm lược đồ sẽ trả `4xx` và không chi gì. **Không bao giờ coi một thân
+thiếu trường là gói hợp lệ.**
+
+**Đạt nghĩa là gì, và không có nghĩa là gì.** Đạt chứng minh địa chỉ gọi tới được, chữ ký khớp, và bạn trả lời đúng giờ. Đạt
+**không** chứng minh bộ nhận tất toán của bạn trả lời đúng (§2.2, §2.2a); việc đó do các ca conformance
+([testing.md §1.6](./testing.md#16-kênh-settlement--8-ca-chạy-riêng)) và bước kiểm lên chính thức ([go-live.md](./go-live.md)) làm.
+
+Handler tối thiểu (hàm verify ở §3):
+
+```js
+app.post('/settlement-test', rawBodyJson, (req, res) => {
+  if (!verifySettlementSignature(req, SETTLEMENT_SECRETS)) return res.sendStatus(401);
+  res.sendStatus(200); // chỉ vậy: không chi trả, không ghi sổ
+});
+```
+
+Bộ nhận tham chiếu (`examples/node/settlement-receiver.mjs`) đã phục vụ cửa gọi thử ở `/settlement-test` (đổi bằng `--test-path` hoặc `TEST_PATH`), và đường dẫn tất toán của nó từ chối thân gọi thử.
 
 ## 3. Chúng tôi tự xác thực với bạn — `PartnerSettlementSignatureV1`
 
@@ -275,6 +345,7 @@ Gửi khi bạn đã thực sự trả; đó là thứ khép dòng ở phía ch�
 | | |
 |---|---|
 | Ai kích hoạt | **ops của chúng tôi**, bấm **Chi trả** trên màn — KHÔNG có job nào tự bắt đầu gửi |
+| Bước đầu của một lượt | trước mọi dòng, chúng tôi gọi **cửa gọi thử** của bạn (§2.3). Không `2xx` thì lượt chạy dừng ở đó và **không** gửi dòng nào; **Tiếp tục** cũng vậy. Chưa khai địa chỉ gọi thử thì câu trả lời là `not_ready_test_endpoint` và lượt chạy dừng y như thế |
 | Gửi hàng loạt | **tuần tự**, không song song (**Gửi tất cả**). **Từ bản v1.4.1**, chiến dịch Reward được chi trả bằng MỘT nút (**Chi trả**) chạy nền: chỉ gửi, mỗi người chơi một thông báo (điểm đã chuyển một lần ở bước chốt kỳ điểm; **Chi trả** không chuyển lần nữa), **với nhịp mặc định 10 thông báo mỗi giây cho mỗi tích hợp** (chỉnh được theo từng đơn vị). Ở nhịp đó 6.642 dòng mất khoảng **11 phút** khi bạn trả lời dưới 100 ms mỗi dòng; bạn trả lời chậm hơn thì thời gian gửi ≈ *số dòng × thời gian bạn trả lời mỗi dòng* (ví dụ 200 ms mỗi dòng thì khoảng 22 phút) |
 | Khi bạn ngừng trả lời | **Từ v1.4.1:** sau **20 lần gửi lỗi liên tiếp** (không trả lời trong 10 giây, hoặc trả mã khác `2xx`/`409`/`422`) lượt chạy **tự tạm dừng** và hiện cho ops *"đối tác không trả lời"*; ops bấm **Tiếp tục** khi bạn sẵn sàng và chúng tôi chỉ gửi các dòng chưa gửi. Lỗi cấu hình bên chúng tôi (chưa có địa chỉ, chưa có khoá) thì dừng cả lượt ngay |
 | Gửi lại sau lỗi | ops bấm **Gửi lại** (từ v1.4.1 còn có **Gửi lại phần lỗi** cho cả một lượt chạy) — nonce mới, cùng `settlementItemId` — trừ sau "không trả lời trong 10 giây": khi đó chỉ có **Hỏi lại đối tác** (cùng nonce) |
@@ -314,12 +385,12 @@ Lối đi cho lập trình viên bắt đầu từ con số không. Mỗi bướ
 | # | Bạn làm | Xong khi |
 |---|---|---|
 | 1 | Đọc [credential-derivation.md](./credential-derivation.md) và dẫn xuất khoá **SETTLEMENT** từ `masterSecret` (khác khoá RECOVERY và EVENT) | bạn tái tạo được test vector |
-| 2 | Dựng một endpoint **HTTPS** nhận `POST` với thân JSON ([§2](#2-chúng-tôi-gọi-bạn--post-địa-chỉ-nhận-điểm-của-bạn)) và đưa địa chỉ cho ops của chúng tôi ([§2.0](#20-khai-địa-chỉ)). Giữ địa chỉ đúng từng ký tự | ops của chúng tôi thấy **Sẵn sàng gửi điểm** |
+| 2 | Dựng **hai** endpoint **HTTPS**: một nhận `POST` với thân JSON ([§2](#2-chúng-tôi-gọi-bạn--post-địa-chỉ-nhận-điểm-của-bạn)), và **cửa gọi thử** ([§2.3](#23-cửa-gọi-thử--post-địa-chỉ-gọi-thử-của-bạn)), một địa chỉ **khác** chỉ kiểm chữ ký và trả `2xx`. Đưa cả hai địa chỉ cho ops của chúng tôi ([§2.0](#20-khai-địa-chỉ)). Giữ từng địa chỉ đúng từng ký tự | ops của chúng tôi thấy **Sẵn sàng gửi điểm**, và địa chỉ cửa gọi thử đã được khai |
 | 3 | Trong handler, **theo đúng thứ tự**: (a) verify chữ ký trên **byte thô** và cửa sổ ±5 phút, sai thì trả `401` ([§3](#3-chúng-tôi-tự-xác-thực-với-bạn--partnersettlementsignaturev1)); (b) đọc `deliveryNonce`: đã thấy rồi thì trả `409` và dừng ([§4](#4-chống-phát-lại--hai-nghĩa-vụ-không-phải-một)); (c) kiểm thân, từ chối vì lý do nghiệp vụ thì trả `422`; (d) lưu dòng (`settlementItemId`, `externalUserId`, `pointAmount`, `deliveryNonce`) **trước khi** trả lời; (e) trả `2xx` | các ca conformance ([testing.md §1.6](./testing.md#16-kênh-settlement--8-ca-chạy-riêng)) qua |
 | 4 | Cộng điểm cho người chơi theo **`externalUserId`**, tối đa **một lần cho mỗi `settlementItemId`** trong sổ của bạn: lần **Gửi lại** mang cùng `settlementItemId` với `deliveryNonce` mới, nên nếu đã cộng dòng đó thì trả `2xx` và **không** cộng lại. (Chỉ từ chối theo `deliveryNonce`; không bao giờ trả `409` vì `settlementItemId` lặp) | dòng bị phát lại không bao giờ áp hai lần |
 | 5 | Trả lời nhanh (dưới 10 giây, tốt nhất vài trăm mili giây) và **làm việc thật sau khi trả lời**. Trả lời chậm bị tính là gửi lỗi, và 20 lần liên tiếp tạm dừng cả lượt ([§6](#6-vận-hành)) | thời gian trả lời p99 chỉ vài trăm mili giây |
 | 6 | Sau khi **thật sự đã trả** một dòng, gửi sự kiện `POINT_REDEEMED` với `settlementItemId` của dòng đó chép nguyên văn và **đúng số tiền** của bảng kê ([§5](#5-sau-khi-bạn-trả--báo-lại-bằng-point_redeemed), [event-ingestion.md](./event-ingestion.md)) | dòng hiện **Khớp** ở ops của chúng tôi |
-| 7 | Trên **sandbox**, tự gửi cho mình một thông báo thử (`POST /api/v1/integrations/settlement/test`, [testing.md §1.7](./testing.md)); lần đầu phải trả `2xx`, cùng nonce lặp lại phải trả `409`. Mẫu **không** phải dòng thật: đừng ghi vào sổ | lần thử trả `SENT_OK` |
+| 7 | Trên **sandbox**, tự gọi thử cửa gọi thử của bạn (`POST /api/v1/integrations/settlement/test`, [testing.md §1.7](./testing.md#17-tự-gọi-cửa-gọi-thử-của-bạn-chỉ-ở-sân-sandbox)): chữ ký đúng phải được trả `2xx`, chữ ký sai hoặc thiếu phải bị từ chối. Lượt gọi chỉ đi tới cửa gọi thử và không mang dòng nào: không có gì để ghi sổ | lần thử trả `SENT_OK` |
 | 8 | Nhờ ops của chúng tôi bật loại sự kiện `POINT_REDEEMED` cho tích hợp của bạn và hẹn ngày lên chính thức ([go-live.md](./go-live.md)); rồi họ chi trả **một đợt nhỏ đầu tiên** và xem những dòng đầu đóng lại | dòng thật đầu tiên **Khớp** |
 
 **Ops của chúng tôi thấy gì cho mỗi câu trả lời của bạn** (để bạn biết phía bên kia chuyện gì xảy ra):
@@ -343,6 +414,8 @@ Lối đi cho lập trình viên bắt đầu từ con số không. Mỗi bướ
 
 ```text
 [ ] Đưa ops của chúng tôi một địa chỉ https:// nhận thông báo (§2.0)
+[ ] Đưa ops của chúng tôi địa chỉ https:// THỨ HAI, cửa gọi thử, khác địa chỉ đầu: nó verify chữ ký và trả 2xx trong 10 giây, không làm gì khác (§2.3)
+[ ] Kiểm rằng bộ nhận tất toán thật của bạn từ chối thân gọi thử bằng 4xx (nó không có trường tất toán nào) và không bao giờ chi trả vì nó (§2.3)
 [ ] Nhờ ops của chúng tôi bật loại sự kiện POINT_REDEEMED cho tích hợp của bạn (§5)
 [ ] Dẫn xuất khoá kênh SETTLEMENT từ masterSecret (xem credential-derivation.md) — RIÊNG khoá RECOVERY
 [ ] Dựng verify chữ ký PartnerSettlementSignatureV1 trên thân THÔ (§3)
@@ -351,5 +424,5 @@ Lối đi cho lập trình viên bắt đầu từ con số không. Mỗi bướ
 [ ] Cộng tối đa một lần cho mỗi settlementItemId trong sổ của bạn; trả 2xx (không phải 409) cho lần Gửi lại của dòng đã cộng (§7 bước 4)
 [ ] Trả 2xx khi đã nhận, dưới 10 giây — không cần xử lý xong mới trả 2xx; 20 lần gửi lỗi liên tiếp tạm dừng cả lượt (§6)
 [ ] Gửi POINT_REDEEMED cho mọi dòng bạn đã trả, chép settlementItemId nguyên văn (§5)
-[ ] Chạy các ca conformance settlement với endpoint của bạn (testing.md §1.6) và tự gửi một thông báo thử trên sandbox (testing.md §1.7)
+[ ] Chạy các ca conformance settlement với endpoint của bạn (testing.md §1.6) và tự gọi thử cửa gọi thử của bạn trên sandbox (testing.md §1.7)
 ```

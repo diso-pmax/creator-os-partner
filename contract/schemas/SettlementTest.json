@@ -1,0 +1,24 @@
+{
+  "type": "object",
+  "properties": {
+    "schemaVersion": {
+      "type": "string",
+      "const": "settlement-test.v1"
+    },
+    "deliveryNonce": {
+      "type": "string",
+      "format": "uuid"
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "deliveryNonce"
+  ],
+  "additionalProperties": false,
+  "title": "SettlementTest",
+  "description": "The body WE send to your TEST address when a trial call is made (see webhooks.settlementTest). It carries no player, no points and no money, and it is never sent to your settlement endpoint.",
+  "x-serverSideChecks": [
+    "schemaVersion is always \"settlement-test.v1\"; deliveryNonce is a new UUID on every call",
+    "answer 2xx to a correctly signed call; a call with a wrong signature must be refused (401)"
+  ]
+}

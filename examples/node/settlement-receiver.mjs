@@ -3,6 +3,10 @@
 //
 // It is the endpoint WE call when our operations team sends a settled point amount to you:
 //     POST <your settlement_endpoint>      (see contract/en/settlement.md)
+// and, on a SEPARATE path, the TEST DOOR we call to check that we can reach you (contract section 2.3):
+//     POST <your test endpoint>            (`/settlement-test` by default, `--test-path` or TEST_PATH to change it)
+// The two addresses you give our operations team must be different. The test door only verifies the signature and answers 200:
+// it pays nothing, books nothing, remembers nothing. The settlement path REFUSES the test body.
 //
 // Run it:
 //     SETTLEMENT_SECRET=<your channel secret> node examples/node/settlement-receiver.mjs --port 8080
@@ -19,7 +23,9 @@
 //           The signature is checked against EVERY secret you gave for that key id, newest first: the platform signs
 //           with the NEW key the moment a rotation completes and `X-Platform-Key-Id` does not change between versions,
 //           so keep the old secret until we tell you it is revoked (contract section 3, "Key rotation").
-//   2. 400  the signed body is not JSON                         422  the signed body has no `deliveryNonce`
+//      TEST DOOR (the path of `--test-path`): a correctly signed call is answered 200 right here. Nothing else happens.
+//   2. 400  the signed body is not JSON                         422  the signed body has no `deliveryNonce`, or is the TEST
+//           body (`schemaVersion` "settlement-test.v1"): a test call that reaches the settlement path must never be paid
 //   3. 409  this `deliveryNonce` was already seen (replay)   <- YOUR obligation, contract section 4;
 //           our "Ask the partner again" button resends the same nonce and reads 409 as "already received"
 //   4. 200  first time: nonce recorded, packet printed
@@ -35,6 +41,12 @@ import { existsSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 
 /** +-5 minutes, the same freshness window as every other signing scheme of the contract. */
 export const FRESHNESS_WINDOW_MS = 5 * 60_000;
+
+/** Where the test door lives unless you say otherwise. It must NOT be the address you gave us for settlements. */
+export const DEFAULT_TEST_PATH = '/settlement-test';
+
+/** The `schemaVersion` of the body of a test call (contract section 2.3). */
+const TEST_SCHEMA_VERSION = 'settlement-test.v1';
 
 /** A settlement packet is a few hundred bytes. Anything bigger is refused before it is buffered. */
 const MAX_BODY_BYTES = 64 * 1024;
@@ -99,12 +111,14 @@ export function createNonceStore(file) {
  * @param {{has:(n:string)=>boolean, add:(n:string)=>void}} [opts.nonceStore]
  * @param {(line:object)=>void} [opts.log]               called for every ACCEPTED packet.
  * @param {()=>number} [opts.now]                        epoch ms, injectable for tests.
+ * @param {string} [opts.testPath]                       the path of the TEST DOOR (default `/settlement-test`). The query is ignored.
  * @returns {(req: import('node:http').IncomingMessage, res: import('node:http').ServerResponse) => void}
  */
 export function createReceiver(opts = {}) {
   const nonceStore = opts.nonceStore ?? createNonceStore();
   const log = opts.log ?? ((line) => console.log(JSON.stringify(line)));
   const now = opts.now ?? Date.now;
+  const testPath = opts.testPath ?? DEFAULT_TEST_PATH;
 
   /** Every secret that may have signed a call carrying this key id, newest first. Empty = unknown key id. */
   const secretsFor = (keyId) => {
@@ -158,6 +172,9 @@ export function createReceiver(opts = {}) {
         return reply(401, { error: 'bad signature' });
       }
 
+      // The TEST DOOR: the signature is right, so we are reachable: that is all it asks. Pay nothing, book nothing, remember nothing.
+      if ((req.url ?? '/').split('?')[0] === testPath) return reply(200, { ok: true });
+
       // 2. the body is signed, so it is safe to read now
       let packet;
       try {
@@ -165,6 +182,8 @@ export function createReceiver(opts = {}) {
       } catch {
         return reply(400, { error: 'body is not JSON' });
       }
+      // A test body that reached the settlement path (the two addresses were mixed up): refuse it, never treat it as a packet.
+      if (packet?.schemaVersion === TEST_SCHEMA_VERSION) return reply(422, { error: 'this is the test body: it belongs to the test door' });
       const nonce = packet?.deliveryNonce;
       if (typeof nonce !== 'string' || nonce === '') return reply(422, { error: 'deliveryNonce is required' });
 
@@ -295,6 +314,27 @@ async function selfTest() {
     } finally {
       rot.server.close();
     }
+    // The test door: signed call -> 200 and NOTHING booked; wrong signature -> 401; the test body on the settlement path -> 422.
+    const booked = [];
+    const door = await startReceiver({ port: 0, host: '127.0.0.1', secret: v.secret, log: (l) => booked.push(l) });
+    try {
+      const sendDoor = async (path, signatureOf = (ts, b) => signSettlement(v.secret, ts, 'POST', path, b)) => {
+        const ts = Math.floor(Date.now() / 1000);
+        const testBody = JSON.stringify({ schemaVersion: 'settlement-test.v1', deliveryNonce: `self-test-door-${Date.now()}` });
+        const r = await fetch(`http://127.0.0.1:${door.port}${path}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Platform-Key-Id': 'self-test', 'X-Platform-Timestamp': String(ts), 'X-Platform-Signature': signatureOf(ts, testBody) },
+          body: testBody,
+        });
+        return r.status;
+      };
+      results.push(['test door: correctly signed -> 200', await sendDoor(DEFAULT_TEST_PATH), 200]);
+      results.push(['test door: wrong signature -> 401', await sendDoor(DEFAULT_TEST_PATH, () => 'sha256=00'), 401]);
+      results.push(['test body on the settlement path -> 422 (never a packet)', await sendDoor('/hook'), 422]);
+      results.push(['test door: nothing was booked', booked.length, 0]);
+    } finally {
+      door.server.close();
+    }
     let all = true;
     for (const [name, got2, want] of results) {
       const pass = got2 === want;
@@ -331,9 +371,10 @@ if (process.argv[1] && import.meta.url === new URL(`file://${process.argv[1]}`).
       process.exit(2);
     }
     const port = Number(argValue('--port', process.env.PORT ?? '8080'));
+    configured.testPath = argValue('--test-path', process.env.TEST_PATH ?? DEFAULT_TEST_PATH);
     const nonceStore = createNonceStore(argValue('--nonce-file', process.env.NONCE_FILE ?? 'settlement-nonces.json'));
     startReceiver({ port, ...configured, nonceStore }).then(({ port: p }) => {
-      console.error(`settlement receiver listening on :${p} (nonces remembered: ${nonceStore.size()})`);
+      console.error(`settlement receiver listening on :${p} (nonces remembered: ${nonceStore.size()}; test door at ${configured.testPath})`);
     });
   }
 }

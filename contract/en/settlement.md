@@ -29,13 +29,17 @@ liability…).
 
 ### 2.0 Declaring the address
 
-1. **You** give our ops a URL (the address that receives our `POST`).
-2. **Our ops** enters it on your integration's screen, in the **Points receiving** tab. Until it is
-   entered, our ops' **Pay** button is locked and says why — there is no way to force a call.
+1. **You** give our ops **two** URLs, one for each door: the address that receives our settlement `POST`
+   (§2.1 and §2.2), and the **test door** (§2.3), a second address that only proves we can reach you. **The two must
+   be different** (§2.3).
+2. **Our ops** enters both on your integration's screen, in the **Points receiving** tab. Until the settlement
+   address is entered, our ops' **Pay** button is locked and says why — there is no way to force a call. Until the
+   test door is entered, the **Test** action and the first step of every **Pay** run answer `not_ready_test_endpoint`,
+   and a run stops there without sending a single line.
 3. The address must be `https://` on the public Internet. We refuse an address that points at
    `localhost`, a private network or a link-local address, and one that carries `user:password` in
    it (a secret does not belong in the address).
-4. **Keep the address exactly as you gave it**, character for character: the path and query are part of
+4. **Keep each address exactly as you gave it**, character for character: the path and query are part of
    what we sign (§3).
 
 The screen shows **Ready to send points** only when all four of these are true:
@@ -47,7 +51,8 @@ The screen shows **Ready to send points** only when all four of these are true:
 | a **usable SETTLEMENT key** exists | the call is signed with it (§3) |
 | the integration has **exactly one** identity provider across its `DIRECT` event sources | we must know which of your identifier spaces `externalUserId` belongs to |
 
-A missing condition is shown with its reason next to the **Pay** button.
+A missing condition is shown with its reason next to the **Pay** button. The test door is **not** one of the four
+conditions: it has its own answer, `not_ready_test_endpoint` (§2.3).
 
 ### 2.1 Request body
 
@@ -161,6 +166,71 @@ does not: a bare `200`, an empty body, a body of another shape, or a body over 4
   SHA-256 of the body and your `redemptionRef` in our audit trail, never the body itself.
 - ⚠️ `2xx` still means "received". Only the shape above means "paid". Do not put `result: "PAID"` in an answer
   for a line you have not paid.
+
+### 2.3 The test door — `POST <your test endpoint>`
+
+A second endpoint on your side, like a `/health` check **but signed**. It answers one question: *can the platform reach
+you, with a signature you accept, in time?* It never touches a user, a point or an amount.
+
+**Every "test" we run calls this door and nothing else.** We never send a made-up packet to the settlement address (§2.1).
+That covers: the **Test** action on our Pay screen, the **first step of every Pay run** (and of **Resume**), the
+platform's own **Send test** button, and the sandbox self-test you can call yourself
+([testing.md §1.7](./testing.md#17-call-your-test-door-sandbox-only)).
+
+**What we send:**
+
+```http
+POST <your test endpoint>
+Content-Type: application/json
+X-Platform-Key-Id: …
+X-Platform-Timestamp: 1786698753
+X-Platform-Signature: sha256=…
+
+{"schemaVersion":"settlement-test.v1","deliveryNonce":"3f2a9c1e-…"}
+```
+
+- The body has **exactly these two fields** and no others: `schemaVersion` is always `"settlement-test.v1"` (a different shape
+  would be `settlement-test.v2`; `v1` never changes), `deliveryNonce` is a new UUID v4 for each call. There is **no**
+  `externalUserId`, no point or money amount, no batch or line reference.
+- The signature is the **same scheme as §3**, with the **SETTLEMENT** key, and the signing string uses the path and query of
+  **your test address**, exactly as declared. Verify it on the raw bytes, within ±5 minutes, with the same code.
+
+**What you answer:**
+
+| Your answer | We read it as |
+|---|---|
+| `2xx` | **passed** |
+| anything else — `4xx`, `5xx` | **not passed** |
+| no answer within **10 seconds**, a connection error, or a `3xx` redirect (we never follow one) | **not passed** |
+
+We **ignore the answer body**. Answer `401` when the signature does not verify: the conformance suite checks that a call with a
+wrong signature is **refused** (`SETTLEMENT-T2`, `403` accepted) and that a correct one is answered `2xx` (`SETTLEMENT-T1`,
+[testing.md §1.6](./testing.md#16-settlement-channel--8-cases-run-separately)).
+
+**What this door must not do:** pay, credit or book anything, write a record, or look up a user. There is nothing to
+store: you need not remember `deliveryNonce` (a repeat is harmless, and it is new on every call anyway).
+
+**The two addresses must be different, character for character.** We refuse to save a test address equal to the settlement
+address, and if both ever become equal (the settlement address is changed afterwards) the test is treated as not declared and
+is **not sent**: `not_ready_test_endpoint`. Two addresses that differ only in the query are different, so you may route both
+doors to one handler by path or query. If you did put the same address in both places by mistake, your **real** receiver
+must still refuse this body: it has none of the settlement fields (§2.1), so a receiver that validates the shape answers `4xx`
+and nothing is paid. **Never treat a body with missing fields as a valid packet.**
+
+**What a pass proves, and what it does not.** It proves the address is reachable, the signature verifies, and you answer in
+time. It does **not** prove your settlement receiver answers correctly (§2.2, §2.2a); the conformance cases
+([testing.md §1.6](./testing.md#16-settlement-channel--8-cases-run-separately)) and the go-live check ([go-live.md](./go-live.md)) do.
+
+Minimal handler (the verify function is in §3):
+
+```js
+app.post('/settlement-test', rawBodyJson, (req, res) => {
+  if (!verifySettlementSignature(req, SETTLEMENT_SECRETS)) return res.sendStatus(401);
+  res.sendStatus(200); // nothing else: no payment, no booking
+});
+```
+
+The reference receiver (`examples/node/settlement-receiver.mjs`) already serves the test door at `/settlement-test` (`--test-path` or `TEST_PATH` changes it), and its settlement path refuses the test body.
 
 ## 3. We authenticate ourselves to you — `PartnerSettlementSignatureV1`
 
@@ -282,6 +352,7 @@ described in [event-ingestion.md](./event-ingestion.md#15-reading-the-result-aft
 | | |
 |---|---|
 | Who triggers it | **our ops**, pressing **Pay** on screen — there is NO job that starts sending by itself |
+| First step of a run | before any line, we call your **test door** (§2.3). If it is not `2xx`, the run stops there and sends **no** line; the same on **Resume**. If no test address is declared, the answer is `not_ready_test_endpoint` and the run stops the same way |
 | Bulk send | **sequential**, never parallel (**Send all**). **From release v1.4.1** a Reward campaign is paid with ONE button (**Pay**) that runs in the background: it only sends, one notification per player (the points already moved once, when the period was closed; **Pay** does not move them again), **at a default pace of 10 notifications per second per integration** (adjustable per unit). At that pace 6,642 lines take about **11 minutes** when you answer in under 100 ms per line; if you answer more slowly, the sending time is about *number of lines × your answer time per line* (for example 200 ms per line is about 22 minutes) |
 | If you stop answering | **From v1.4.1:** after **20 failed sends in a row** (no answer in 10 seconds, or a non-`2xx`/`409`/`422` answer) the run **pauses by itself** and shows our ops *"the partner is not answering"*; ops presses **Resume** once you are ready and we send only the lines not yet sent. A configuration error on our side (no address, no key) stops the whole run at once |
 | Send again after a failure | ops clicks **Retry** (from v1.4.1 also **Retry failed lines** for a whole run) — new nonce, same `settlementItemId` — except after "no answer within 10 seconds": then only **Ask partner again** (same nonce) |
@@ -321,12 +392,12 @@ A path for the developer who starts from nothing. Each step names the section th
 | # | You do | Done when |
 |---|---|---|
 | 1 | Read [credential-derivation.md](./credential-derivation.md) and derive the **SETTLEMENT** key from your `masterSecret` (a different key from RECOVERY and EVENT) | you can reproduce the test vector |
-| 2 | Build one **HTTPS** endpoint that accepts `POST` with a JSON body ([§2](#2-we-call-you--post-your-settlement-endpoint)) and give its address to our ops ([§2.0](#20-declaring-the-address)). Keep the address character for character | our ops see **Ready to send points** |
+| 2 | Build **two HTTPS** endpoints: one that accepts `POST` with a JSON body ([§2](#2-we-call-you--post-your-settlement-endpoint)), and the **test door** ([§2.3](#23-the-test-door--post-your-test-endpoint)), a **different** address that only checks the signature and answers `2xx`. Give both addresses to our ops ([§2.0](#20-declaring-the-address)). Keep each address character for character | our ops see **Ready to send points**, and the test door address is declared |
 | 3 | In the handler, **in this order**: (a) verify the signature on the **raw bytes** and the ±5-minute window, answer `401` if it fails ([§3](#3-we-authenticate-ourselves-to-you--partnersettlementsignaturev1)); (b) read `deliveryNonce`: if you have seen it, answer `409` and stop ([§4](#4-replay-protection--two-obligations-not-one)); (c) validate the body, answer `422` if you refuse for a business reason; (d) store the line (`settlementItemId`, `externalUserId`, `pointAmount`, `deliveryNonce`) **before** answering; (e) answer `2xx` | the conformance cases ([testing.md §1.6](./testing.md#16-settlement-channel--8-cases-run-separately)) pass |
 | 4 | Pay the player by **`externalUserId`**, at most **once per `settlementItemId`** in your own records: a **Retry** carries the same `settlementItemId` with a new `deliveryNonce`, so if you already applied that line, answer `2xx` and do **not** apply it again. (Reject on `deliveryNonce` only; never answer `409` for a repeated `settlementItemId`) | a replayed line is never applied twice |
 | 5 | Answer fast (well under 10 seconds) and **do the real work after answering**. Slow answers count as failed sends, and 20 in a row pause the whole run ([§6](#6-operations)) | your p99 answer time is a few hundred milliseconds |
 | 6 | After you **really paid** a line, send the `POINT_REDEEMED` event with that line's `settlementItemId` copied verbatim and the **exact** amount of the statement ([§5](#5-after-you-pay--report-it-with-point_redeemed), [event-ingestion.md](./event-ingestion.md)) | the line shows **Matched** for our ops |
-| 7 | On the **sandbox**, send yourself a test notification (`POST /api/v1/integrations/settlement/test`, [testing.md §1.7](./testing.md#17-send-yourself-a-test-settlement-notification-sandbox-only)); the first answer must be `2xx`, the same nonce repeated must be answered `409`. The sample is **not** a real line: do not book it | the test answers `SENT_OK` |
+| 7 | On the **sandbox**, call your own test door (`POST /api/v1/integrations/settlement/test`, [testing.md §1.7](./testing.md#17-call-your-test-door-sandbox-only)): a correct signature must be answered `2xx`, a wrong or missing one must be refused. The call goes **only** to the test door and carries no line: there is nothing to book | the test answers `SENT_OK` |
 | 8 | Ask our ops to enable the `POINT_REDEEMED` event type on your integration and agree the go-live date ([go-live.md](./go-live.md)); then they pay a **small first batch** and watch the first lines close | the first real line is **Matched** |
 
 **What our ops see for each of your answers** (so you can tell what happened from the other side):
@@ -350,6 +421,8 @@ A path for the developer who starts from nothing. Each step names the section th
 
 ```text
 [ ] Give our ops an https:// address that receives the notification (§2.0)
+[ ] Give our ops a SECOND https:// address, the test door, different from the first: it verifies the signature and answers 2xx within 10 seconds, nothing else (§2.3)
+[ ] Check that your real receiver refuses the test body with a 4xx (it has none of the settlement fields) and never pays on it (§2.3)
 [ ] Ask our ops to enable the POINT_REDEEMED event type for your integration (§5)
 [ ] Derive the SETTLEMENT channel key from masterSecret (see credential-derivation.md) — SEPARATE from the RECOVERY key
 [ ] Implement PartnerSettlementSignatureV1 verification on the RAW body (§3)
@@ -358,5 +431,5 @@ A path for the developer who starts from nothing. Each step names the section th
 [ ] Apply a line at most once per settlementItemId in your own records; answer 2xx (not 409) to a Retry of a line you already applied (§7 step 4)
 [ ] Return 2xx once received, well under 10 seconds — you don't need to finish processing before responding 2xx; 20 failed sends in a row pause the whole run (§6)
 [ ] Send POINT_REDEEMED for every line you paid, with settlementItemId copied verbatim (§5)
-[ ] Run the settlement conformance cases against your endpoint (testing.md §1.6) and send yourself a sandbox test notification (testing.md §1.7)
+[ ] Run the settlement conformance cases against your endpoint (testing.md §1.6) and call your own test door on the sandbox (testing.md §1.7)
 ```

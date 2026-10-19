@@ -123,6 +123,12 @@ export type CauHinh = {
    * your receiver keeps the old secret next to the new one while a rotation is in flight.
    */
   settlementPreviousSecret?: string;
+  /**
+   * YOUR settlement TEST door (contract section 2.3): the separate address the platform calls for a trial, never your settlement endpoint.
+   * Optional: when set, the suite adds two cases that sign a `settlement-test.v1` body and call it (correct signature => 2xx, wrong => refused).
+   * Uses `settlementSecret`, so it is required whenever this is set.
+   */
+  settlementTestUrl?: string;
 };
 
 /** Một ca: thuần hàm, nhận cấu hình + đường gọi, trả kết quả. Không trạng thái toàn cục. */

@@ -191,8 +191,9 @@ CONF_SETTLEMENT_SECRET=<secret kênh SETTLEMENT của bạn> \
 
 | Biến | Bắt buộc | Ghi chú |
 |---|:--:|---|
-| `CONF_SETTLEMENT_URL` | để chạy trục này | vắng ⇒ các ca SETTLEMENT được báo là **chưa chạy** (không bao giờ là đạt) |
-| `CONF_SETTLEMENT_SECRET` | ✅ khi đã đặt URL | hoặc đặt `CONF_MASTER_SECRET` để bộ kiểm tự dẫn xuất khoá SETTLEMENT (`CONF_SETTLEMENT_VERSION` chọn phiên bản, mặc định `1`) |
+| `CONF_SETTLEMENT_URL` | để chạy tám ca | vắng ⇒ tám ca được báo là **chưa chạy** (`SKIPPED`, không bao giờ là đạt) |
+| `CONF_SETTLEMENT_TEST_URL` | để chạy hai ca **cửa gọi thử** | địa chỉ **cửa gọi thử của bạn** ([settlement.md §2.3](./settlement.md#23-cửa-gọi-thử--post-địa-chỉ-gọi-thử-của-bạn)), một địa chỉ **khác** URL tất toán. Đặt ⇒ bộ kiểm thêm `SETTLEMENT-T1` và `SETTLEMENT-T2` (bên dưới). Dùng riêng được: chỉ đặt biến này thì hai ca cửa chạy còn tám ca kia báo `SKIPPED` |
+| `CONF_SETTLEMENT_SECRET` | ✅ khi đã đặt một trong hai URL | hoặc đặt `CONF_MASTER_SECRET` để bộ kiểm tự dẫn xuất khoá SETTLEMENT (`CONF_SETTLEMENT_VERSION` chọn phiên bản, mặc định `1`). Cùng một khoá ký tám ca và hai ca cửa |
 | `CONF_SETTLEMENT_KEY_ID` | không | gửi trong `X-Platform-Key-Id`; mặc định `conformance-settlement` |
 | `CONF_SETTLEMENT_PREVIOUS_SECRET` | không | secret mà lượt xoay thay thế. Khi đặt, bộ kiểm thêm ca **thứ chín**, `SETTLEMENT-9` (bên dưới) |
 
@@ -207,8 +208,10 @@ CONF_SETTLEMENT_SECRET=<secret kênh SETTLEMENT của bạn> \
 | `SETTLEMENT-7` | thời gian trả lời | trong 10 giây |
 | `SETTLEMENT-8` | chuyển hướng | không trả `3xx`; khai địa chỉ cuối cùng |
 | `SETTLEMENT-9` *(tuỳ chọn)* | ký bằng secret **cũ**, dưới **cùng** `X-Platform-Key-Id` | `2xx` — trong lúc xoay khoá, bộ nhận của bạn phải giữ CẢ HAI secret và thử mới trước |
+| `SETTLEMENT-T1` *(cửa gọi thử)* | lượt gọi ký đúng tới cửa gọi thử, thân `{"schemaVersion":"settlement-test.v1","deliveryNonce":"<uuid>"}` | `2xx` |
+| `SETTLEMENT-T2` *(cửa gọi thử)* | cùng lượt gọi nhưng **chữ ký sai** | `401` (chấp nhận `403`) — cửa gọi thử trả `2xx` cho một chữ ký sai thì không chứng minh được gì về việc bạn kiểm chữ ký |
 
-`SETTLEMENT-9` chỉ chạy khi đặt `CONF_SETTLEMENT_PREVIOUS_SECRET`, nên tám ca trên vẫn là tám. Mã khoá không đổi giữa các phiên bản (xem [settlement.md §3](./settlement.md#3-chúng-tôi-tự-xác-thực-với-bạn--partnersettlementsignaturev1)), nên bộ nhận chỉ chọn một secret cho mỗi mã khoá sẽ rớt ca này.
+`SETTLEMENT-9` chỉ chạy khi đặt `CONF_SETTLEMENT_PREVIOUS_SECRET`, còn `SETTLEMENT-T1` và `SETTLEMENT-T2` chỉ chạy khi đặt `CONF_SETTLEMENT_TEST_URL`, nên tám ca trên vẫn là tám. Hai ca cửa gọi thử chỉ gọi **cửa gọi thử**: chúng không gửi gói nào tới URL tất toán, và không cần dòng, người chơi hay số tiền nào. Mã khoá không đổi giữa các phiên bản (xem [settlement.md §3](./settlement.md#3-chúng-tôi-tự-xác-thực-với-bạn--partnersettlementsignaturev1)), nên bộ nhận chỉ chọn một secret cho mỗi mã khoá sẽ rớt ca này.
 
 `SETTLEMENT-3` quan trọng hơn vẻ ngoài: khi ops của chúng tôi bấm **Hỏi lại đối tác**, chúng tôi gửi lại đúng
 gói đó với đúng nonce cũ và đọc `409` là "bạn đã nhận rồi". Trả lời khác ở đây có thể khiến chúng tôi gửi
@@ -216,7 +219,7 @@ một khoản đã tất toán hai lần.
 
 **Có sẵn bộ nhận tham chiếu**: `examples/node/settlement-receiver.mjs`
 (Node, không phụ thuộc, MIT). Nó đạt cả 8 ca, nhớ nonce trong tệp JSON qua các lần khởi động lại, và in
-từng gói nhận được. Trong lúc xoay khoá hãy đưa nó cả hai secret, mới trước: `SETTLEMENT_SECRETS=<mới>,<cũ>`. Tự kiểm không cần mạng: `node examples/node/settlement-receiver.mjs --self-test`.
+từng gói nhận được. Nó cũng phục vụ **cửa gọi thử** ở `/settlement-test` theo mặc định (đổi bằng `--test-path` hoặc `TEST_PATH`), nên với bộ nhận chạy ở `http://localhost:8080` bạn chạy được `SETTLEMENT-T1` và `SETTLEMENT-T2` bằng `CONF_SETTLEMENT_TEST_URL=http://localhost:8080/settlement-test`. Trong lúc xoay khoá hãy đưa nó cả hai secret, mới trước: `SETTLEMENT_SECRETS=<mới>,<cũ>`. Tự kiểm không cần mạng: `node examples/node/settlement-receiver.mjs --self-test`.
 
 `SETTLEMENT-2` và `SETTLEMENT-3` đòi đúng **`409`** cho nonce lặp lại: nút "Hỏi lại đối tác" của chúng tôi đọc `409` là "đã nhận rồi". Trả `400`, `422` hay một `200` idempotent sẽ làm hai ca này trượt.
 
@@ -224,10 +227,11 @@ Sau reverse proxy, hãy kiểm chữ ký theo đúng đường dẫn và query n
 
 ⚠️ Kết quả SETTLEMENT in ở khối riêng và **không** nằm trong cổng lên-thật tự động ở §1.3. Tiến trình vẫn thoát khác 0 khi có ca SETTLEMENT trượt, nên hãy tính mã thoát đó trong CI của bạn.
 
-### 1.7 Tự gửi thử một thông báo tất toán (chỉ ở sân sandbox)
+### 1.7 Tự gọi cửa gọi thử của bạn (chỉ ở sân sandbox)
 
-Thay vì chờ ops của chúng tôi bấm **Gửi**, bạn có thể nhờ sân sandbox gửi **một thông báo tất toán mẫu** tới địa chỉ
-bạn đã đưa ([settlement.md §2.0](./settlement.md)). Nó **chỉ tồn tại ở sân sandbox**: ở cụm khác route này
+Thay vì chờ ops của chúng tôi bấm **Gọi thử** hay **Chi trả**, bạn có thể nhờ sân sandbox gọi **cửa gọi thử của bạn**
+([settlement.md §2.3](./settlement.md#23-cửa-gọi-thử--post-địa-chỉ-gọi-thử-của-bạn)) một lần, tới địa chỉ gọi thử bạn đã đưa
+([settlement.md §2.0](./settlement.md#20-khai-địa-chỉ)). Nó **chỉ tồn tại ở sân sandbox**: ở cụm khác route này
 không có và trả `404`.
 
 ```bash
@@ -240,23 +244,26 @@ curl -sS -X POST "https://<host của môi trường thử chúng tôi đã cấ
 ```
 
 Ký như một sự kiện, bằng khoá kênh **EVENT** của bạn ([event-ingestion.md §3](./event-ingestion.md#3-xác-thực)); thân là `{}`.
-Bạn không truyền địa chỉ: chúng tôi gửi tới địa chỉ ops của chúng tôi đã khai cho tích hợp của bạn.
+Bạn không truyền địa chỉ: chúng tôi gọi tới địa chỉ gọi thử mà ops của chúng tôi đã khai cho tích hợp của bạn.
 
 | Câu trả lời | Nghĩa |
 |---|---|
-| `{ "outcome": "SENT_OK", "httpStatus": 200, "code": "sent" }` | bộ nhận của bạn trả `2xx` |
-| `PARTNER_REJECTED` · `partner_rejected` | bộ nhận trả `409` hoặc `422`. Ở lần gửi thử đầu nó phải trả `2xx` |
-| `SEND_FAILED_HTTP` · `partner_unexpected_status` | mã khác. Chỉ `2xx` là "đã nhận" |
+| `{ "outcome": "SENT_OK", "httpStatus": 200, "code": "sent" }` | cửa gọi thử của bạn trả `2xx` |
+| `PARTNER_REJECTED` · `partner_rejected` | cửa gọi thử trả `409` hoặc `422`. Nó phải trả `2xx` |
+| `SEND_FAILED_HTTP` · `partner_unexpected_status` | mã khác. Chỉ `2xx` là đạt |
 | `SEND_FAILED_TIMEOUT` · `partner_unreachable` | không trả lời trong 10 giây, lỗi kết nối, hoặc chuyển hướng |
+| `NOT_CONFIGURED` · `not_ready_test_endpoint` | chưa khai địa chỉ gọi thử (hoặc nó trùng địa chỉ nhận điểm): nhờ ops của chúng tôi khai một địa chỉ **khác** |
 | `NOT_CONFIGURED` · `not_ready_integration` · `not_ready_endpoint` · `not_ready_key` · `not_ready_namespace` | tích hợp chưa sẵn sàng gửi điểm: nhờ ops của chúng tôi hoàn tất địa chỉ và khoá |
-| `429` | quá 6 lượt gửi thử trong một phút: chờ theo `Retry-After` |
+| `429` | quá 6 lượt gọi thử trong một phút: chờ theo `Retry-After` |
 
-Gói mẫu trông thế nào: cùng gói như [settlement.md §2.1](./settlement.md#21-thân-request), ký bằng khoá SETTLEMENT của bạn,
-mã đợt bắt đầu bằng **`SANDBOX-`**, `externalUserId` là `sandbox-user` và một mệnh giá không tồn tại. **Đây không phải
-dòng thật: đừng ghi nó vào sổ của bạn.** Nó không mở đợt nào ở phía chúng tôi và không đổi số dư của ai.
+Chúng tôi gửi gì: lượt `POST` có ký của [settlement.md §2.3](./settlement.md#23-cửa-gọi-thử--post-địa-chỉ-gọi-thử-của-bạn), thân
+đúng là `{"schemaVersion":"settlement-test.v1","deliveryNonce":"<uuid>"}`, ký bằng khoá SETTLEMENT của bạn. **Không có gì được
+gửi tới địa chỉ nhận điểm** và lượt gọi không mang người dùng, điểm hay số tiền nào: không có gì để ghi sổ, nó không mở đợt
+nào ở phía chúng tôi và không đổi số dư của ai.
 
-Việc cần kiểm ở phía bạn: lần gửi thử đầu được trả `2xx`; cùng một `deliveryNonce` lặp lại thì trả `409` (các ca ở §1.6 kiểm
-việc này); chữ ký được kiểm trên thân thô.
+Việc cần kiểm ở phía bạn: lượt gọi ký đúng được trả `2xx`; chữ ký được kiểm trên thân thô, và chữ ký sai hoặc thiếu bị
+**từ chối** bằng `4xx`; lượt gọi không đổi gì trong sổ của bạn; và bộ nhận tất toán thật của bạn từ chối thân gọi thử (nó
+không có trường tất toán nào).
 
 ---
 

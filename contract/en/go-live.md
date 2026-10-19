@@ -63,10 +63,14 @@ See the full checklist in
 
 ### A.5 SETTLEMENT channel *(only if you receive point settlements)*
 
+- [ ] You built **two** endpoints and gave our operations team **two different** `https://` addresses: the settlement address and the **test door** ([settlement.md §2.3](./settlement.md#23-the-test-door--post-your-test-endpoint))
+- [ ] 🔒 The test door verifies `PartnerSettlementSignatureV1` on the **raw** body, answers `2xx` within 10 seconds and does nothing else: no payment, no booking, no lookup of a user. A wrong or missing signature is refused with a `4xx`
+- [ ] 🔒 Your **real** settlement receiver refuses the test body with a `4xx` (it has none of the settlement fields): it never treats a body with missing fields as a valid packet
+- [ ] The sandbox self-test ([testing.md §1.7](./testing.md#17-call-your-test-door-sandbox-only)) answers `SENT_OK`
 - [ ] 🔒 Your receiver verifies `PartnerSettlementSignatureV1` on the **raw** body, within ±5 minutes ([settlement.md](./settlement.md))
 - [ ] 🔒 Your receiver rejects a `deliveryNonce` it has already seen with **`409`**, and remembers nonces across restarts
 - [ ] The dedupe key is `deliveryNonce`, never `settlementItemId`
-- [ ] The conformance suite's SETTLEMENT cases pass **8/8** against your receiver (see testing.md)
+- [ ] The conformance suite's SETTLEMENT cases pass **8/8** against your receiver, and `SETTLEMENT-T1` and `SETTLEMENT-T2` pass against your test door with `CONF_SETTLEMENT_TEST_URL` set (see testing.md §1.6)
 - [ ] You answer within 10 seconds and never with a redirect; the endpoint you declared is the final URL
 - [ ] 🔒 The SETTLEMENT secret is different from every other channel secret and lives only on the server that receives
 
@@ -86,6 +90,7 @@ email, and **never retry a `422` blindly**.
 | What you see | Likely cause | Do |
 |---|---|---|
 | nothing arrives at your endpoint | the endpoint is not declared on our side, or our operations team has not pressed Send yet | check with your contact that the address is declared and the batch is confirmed |
+| our operations team sees `not_ready_test_endpoint`, or the **Pay** run stopped at its first step | the test door address is not declared, is equal to the settlement address, or your test door did not answer `2xx` within 10 seconds (the first step of every run is a call to it, [settlement.md §2.3](./settlement.md#23-the-test-door--post-your-test-endpoint)) | give your contact a test address **different** from the settlement address, check the door answers `2xx` to a correctly signed call, then ask them to run it again: no line was sent before the stop |
 | you answered `401` to us | none of the secrets you have verifies (after a key rotation, the new version is not loaded yet), a stale clock (±5 minutes), or a proxy that rewrote the path | verify against the path exactly as sent, check NTP; we do not retry on `401` |
 | you answered `5xx` or timed out | your side was down or slow (>10 s) | fix it and tell us: our operations team resends the line with a **new** nonce. Before processing a packet, check your own records by `settlementItemId`: if you already paid that line, do not pay again, tell us so we record it with `POINT_REDEEMED` |
 | you answered `409` to a **repeat** (our operations team pressed "Ask the partner again": same packet, same nonce) | you had already received it | nothing to do, we record the line as received |

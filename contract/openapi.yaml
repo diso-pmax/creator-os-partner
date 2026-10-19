@@ -303,6 +303,44 @@ paths:
               schema:
                 $ref: "#/components/schemas/BusinessError"
 webhooks:
+  settlementTest:
+    post:
+      tags:
+        - settlement
+      operationId: settlementTest
+      summary: We make a trial call to YOUR test address (never to your settlement endpoint)
+      description: "Same signature as settlementDelivery (PartnerSettlementSignatureV1, SETTLEMENT key), different address: the test address Diso declared for your channel. The body is only {schemaVersion, deliveryNonce}. Answer 2xx when the signature is right and 401 when it is wrong. Touch no user data. See settlement.md."
+      security:
+        - settlementHmac: []
+      parameters:
+        - name: X-Platform-Key-Id
+          in: header
+          required: true
+          schema:
+            type: string
+        - name: X-Platform-Timestamp
+          in: header
+          required: true
+          schema:
+            type: string
+            pattern: ^\d{1,12}$
+        - name: X-Platform-Signature
+          in: header
+          required: true
+          schema:
+            type: string
+            pattern: ^sha256=[0-9a-f]{64}$
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SettlementTest"
+      responses:
+        "401":
+          description: Bad signature, unknown key id or stale timestamp.
+        2XX:
+          description: Signature verified.
   settlementDelivery:
     post:
       tags:
@@ -546,6 +584,24 @@ components:
       x-serverSideChecks:
         - "amounts are decimal strings, already settled and frozen: do not recompute them"
         - deliveryNonce is new on every real call; you MUST reject a nonce you have already seen (409)
+    SettlementTest:
+      type: object
+      properties:
+        schemaVersion:
+          type: string
+          const: settlement-test.v1
+        deliveryNonce:
+          type: string
+          format: uuid
+      required:
+        - schemaVersion
+        - deliveryNonce
+      additionalProperties: false
+      title: SettlementTest
+      description: The body WE send to your TEST address when a trial call is made (see webhooks.settlementTest). It carries no player, no points and no money, and it is never sent to your settlement endpoint.
+      x-serverSideChecks:
+        - schemaVersion is always "settlement-test.v1"; deliveryNonce is a new UUID on every call
+        - answer 2xx to a correctly signed call; a call with a wrong signature must be refused (401)
     LaunchCreated:
       type: object
       required:
