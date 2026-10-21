@@ -39,6 +39,17 @@ có gì thì ghi *"không"*, đừng bỏ trống:
 
 Không đổi.
 
+## v1.4.0-rc.6 — 2026-10-21
+
+**Sửa lỗi: tài khoản ứng dụng và worker còn giữ quyền sửa, xoá trên hai bảng lịch sử hạng chỉ-thêm.** Có **1 migration mới**, chạy MỘT lần bằng image mới với tài khoản migration (mục 4 của [upgrade.md](upgrade.md)). Không đổi biến môi trường; không có việc phải làm tay.
+
+- 🟡 Migration `20261021150000_6194_revoke_tier_history_mutation_app_roles` thu `UPDATE` và `DELETE`, rồi cấp `SELECT` và `INSERT`, trên hai bảng `creator_os.tier_assignment_events` và `creator_os.tier_catalog_revisions` cho các tài khoản ứng dụng đang tồn tại (`creator_os_app`, `creator_os_dev_app`, `creatoros_dev_app`, `creatoros_test_app`, `creator_os_worker`, `<tên cơ sở dữ liệu>_app`). Triệu chứng: bài tự kiểm lúc khởi động báo `[db-grants] MISMATCH … forbidden: …tier_assignment_events(UPDATE,DELETE), tier_catalog_revisions(UPDATE,DELETE)` mỗi lần API và worker khởi động.
+- 🟡 **Đính chính mục `20261020130000_6146_regrant_creator_os_tables` của `v1.4.0-rc.5`.** Mục đó ghi hai bảng này được "cố ý KHÔNG đụng" vì tài khoản đã có một phần quyền. Điều đó đúng khi quy tắc cấp quyền mặc định đã cấp `SELECT, INSERT` trước đó, và **sai khi tài khoản ứng dụng chưa có quyền nào** (bảng do một tài khoản migration không có quy tắc mặc định tạo): `REVOKE` của bản tạo bảng khi ấy không có gì để thu, rồi migration cấp lại thấy "chưa có quyền nào" và cấp đủ bốn quyền. Cơ sở dữ liệu nào đi qua cả hai migration theo thứ tự đó, kể cả khi nâng thẳng lên `v1.4.0`, đều có thể rơi vào trạng thái này.
+- **Mức độ:** đây là lệch lớp quyền, **không phải dữ liệu bị sửa**: hai bảng vẫn có trigger từ chối mọi `UPDATE` và `DELETE` theo từng hàng (với mọi tài khoản), nên lịch sử hạng không sửa, không xoá được. Hậu quả chỉ là mất một lớp phòng thủ và cảnh báo lặp lại lúc khởi động.
+- **Kiểm sau khi nâng cấp:** log khởi động của API và worker có `[db-grants] OK role=…` cho mọi tài khoản, không còn `MISMATCH` nhắc tới `tier_assignment_events` hay `tier_catalog_revisions`.
+- **Biến môi trường:** không đổi.
+- **Quay lui:** được bằng image cũ; migration chỉ đổi quyền, không đổi dữ liệu.
+
 ## v1.4.0-rc.5 — 2026-10-21
 
 **Sửa lỗi: quy tắc cấp quyền mặc định trên hàm (`EXECUTE ON FUNCTIONS`) đặt tay cho tài khoản ứng dụng.** Có **1 migration mới**, chạy MỘT lần bằng image mới với tài khoản migration (mục 4 của [upgrade.md](upgrade.md)). Không đổi biến môi trường.
