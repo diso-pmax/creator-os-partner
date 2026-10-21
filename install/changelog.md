@@ -39,6 +39,44 @@ có gì thì ghi *"không"*, đừng bỏ trống:
 
 Không đổi.
 
+## v1.4.0-rc.5 — 2026-10-21
+
+**Sửa lỗi: quy tắc cấp quyền mặc định trên hàm (`EXECUTE ON FUNCTIONS`) đặt tay cho tài khoản ứng dụng.** Có **1 migration mới**, chạy MỘT lần bằng image mới với tài khoản migration (mục 4 của [upgrade.md](upgrade.md)). Không đổi biến môi trường.
+
+- 🟡 Migration `20261021120000_6194_drop_default_execute_app_roles` gỡ mọi quy tắc `ALTER DEFAULT PRIVILEGES … GRANT EXECUTE ON FUNCTIONS` mà một tài khoản nào đó đang cấp cho tài khoản ứng dụng (`creator_os_app`, `creator_os_dev_app`, `creatoros_dev_app`, `creatoros_test_app`, `creator_os_worker`, `<tên cơ sở dữ liệu>_app`), cả quy tắc riêng schema `creator_os` lẫn quy tắc toàn cục. Quy tắc này thường do người dựng máy gõ tay lúc tạo tài khoản, không migration nào tạo; nó khiến mọi hàm MỚI do tài khoản đó tạo mang sẵn quyền gọi riêng cho tài khoản ứng dụng, mà câu `REVOKE … FROM PUBLIC` không gỡ được (tài khoản ứng dụng gọi được cả hàm SECURITY DEFINER). Bài tự kiểm lúc khởi động báo nó là `default EXECUTE ON FUNCTIONS granted to an app role`. **Không đổi:** quyền `EXECUTE` đã cấp trên các hàm đang có, quy tắc mặc định trên bảng, quy tắc của tài khoản ngoài danh sách. Chạy lại được.
+- 🔴 **Việc phải làm tay, chỉ khi cần:** nếu tài khoản chạy migration không đủ quyền đổi quy tắc mặc định của tài khoản kia (không phải siêu người dùng, không phải chính nó, không phải thành viên của nó), migration **không dừng** mà ghi cảnh báo `this account may not change the default privileges of role …; run this as a superuser: ALTER DEFAULT PRIVILEGES FOR ROLE … REVOKE EXECUTE ON FUNCTIONS FROM …;` vào log. Gặp dòng đó thì chạy đúng câu lệnh in ra, bằng siêu người dùng, cho từng dòng cảnh báo.
+- **Kiểm sau khi nâng cấp:** log khởi động của API và worker có `[db-grants] OK role=…` cho mọi tài khoản, không còn `default EXECUTE ON FUNCTIONS granted to an app role`.
+- **Biến môi trường:** không đổi.
+- **Quay lui:** được bằng image cũ; migration chỉ gỡ quy tắc cấp quyền, không đổi dữ liệu.
+
+**Sửa lỗi: tài khoản worker còn giữ quyền trên bảng nhận webhook thô của marketplace.** Có **1 migration mới**, chạy MỘT lần bằng image mới với tài khoản migration (mục 4 của [upgrade.md](upgrade.md)). Không đổi biến môi trường; không có việc phải làm tay.
+
+- 🟡 Migration `20261021090000_6189_revoke_marketplace_webhook_ingress_app_roles` thu lại **mọi quyền** (`REVOKE ALL`) trên bảng `creator_os.marketplace_webhook_ingress` của các tài khoản ứng dụng đang tồn tại: `creator_os_app`, `creator_os_dev_app`, `creatoros_dev_app`, `creatoros_test_app`, `creator_os_worker` và tài khoản `<tên cơ sở dữ liệu>_app`. Bảng này chỉ được đụng tới qua các hàm `marketplace_lifecycle_*` (chạy bằng quyền chủ bảng); mã ứng dụng không đọc hay ghi nó trực tiếp, nên thu quyền không làm mất chức năng nào. Quyền `EXECUTE` trên các hàm đó và mọi bảng khác **không đổi**. Lý do: migration cũ `20260916120000_2517` chỉ thu quyền của tài khoản đã tồn tại lúc nó chạy; tài khoản `creator_os_worker` tạo sau đó rồi được cấp quyền hàng loạt nên giữ nguyên quyền SELECT/INSERT/UPDATE/DELETE (bài tự kiểm quyền bảng lúc khởi động của chính bản này báo đúng điều đó). Chạy lại được, tài khoản không tồn tại thì bị bỏ qua.
+- **Kiểm sau khi nâng cấp** (chỉ đọc, bằng tài khoản có quyền đọc catalog): câu sau **không được ra dòng nào**.
+  `SELECT rolname FROM pg_roles WHERE rolname IN ('creator_os_app','creator_os_dev_app','creatoros_dev_app','creator_os_worker') AND has_table_privilege(rolname, 'creator_os.marketplace_webhook_ingress', 'SELECT,INSERT,UPDATE,DELETE');`
+  Ngoài ra log khởi động của API và worker phải có `[db-grants] OK role=…` cho mọi tài khoản, không có `MISMATCH` nhắc tới `marketplace_webhook_ingress`.
+- **Biến môi trường:** không đổi.
+- **Quay lui:** được bằng image cũ. Migration chỉ thu quyền; mã cũ cũng không đọc bảng này trực tiếp.
+
+**Mới: API và worker tự kiểm quyền bảng của tài khoản cơ sở dữ liệu lúc khởi động (log + Sentry, không làm sập app).** Không có migration và không đổi biến môi trường; không có việc phải làm tay sau khi nâng cấp.
+
+- 🟢 Mỗi lần API và worker khởi động, mỗi tiến trình so quyền thật của từng tài khoản nó kết nối (tài khoản app qua `DATABASE_URL`, tài khoản worker qua `DATABASE_URL_WORKER`) trên mọi bảng schema `creator_os` với danh sách khai báo trong mã. Việc chạy nền sau khi app đã lên, chỉ đọc catalog, không cấp quyền, không chặn và không làm sập app (kiểm lỗi chỉ ghi cảnh báo `could not run`).
+- 🟢 **Sau khi nâng cấp, tìm trong log khởi động của API VÀ worker** (mỗi tài khoản một dòng):
+  - `[db-grants] OK role=<tài khoản> process=<api|worker>: <n> tables match the declared list` là ổn;
+  - `[db-grants] MISMATCH role=<tài khoản> process=<api|worker>: missing (…)` liệt kê bảng và quyền thiếu (đúng lỗi `permission denied for table …`), `forbidden (…)` là quyền đang giữ dù migration đã thu lại, và `default EXECUTE ON FUNCTIONS granted to an app role` là quy tắc cấp quyền mặc định chạy hàm đang cấp cho tài khoản app. Cùng lúc có một sự kiện Sentry `creator_os table privileges differ from the declared list` (tag `source=db_grants_startup_check`, `role`, `process`).
+  - Gặp `MISMATCH`: không cấp tay theo trí nhớ; báo đội phát triển kèm dòng log. Tài khoản superuser được ghi `OK` nhưng chỉ phía "thiếu quyền" có nghĩa.
+- **Biến môi trường:** không đổi.
+- **Quay lui:** được bằng image cũ; bản mới không ghi gì vào cơ sở dữ liệu.
+
+**Sửa lỗi: màn "Sẵn sàng" của tích hợp trả 500 vì tài khoản chạy API thiếu quyền trên một bảng.** Có **1 migration mới**, chạy MỘT lần bằng image mới với tài khoản migration (mục 4 của [upgrade.md](upgrade.md)). Không đổi biến môi trường.
+
+- 🟡 Migration `20261020130000_6146_regrant_creator_os_tables` cấp `SELECT, INSERT, UPDATE, DELETE` cho `creator_os_app`, `creator_os_dev_app` và `creator_os_worker` trên mọi bảng của schema `creator_os` mà tài khoản đó **chưa có quyền nào**. Triệu chứng đã gặp: màn **Sẵn sàng** của một tích hợp trả 500, log API ghi `permission denied for table integration_segment_unseen` (mã `42501`). Nguyên nhân: quy tắc cấp quyền tự động của bước khởi tạo ban đầu gắn với tài khoản migration lúc đó, nên bảng do một tài khoản migration khác tạo về sau không tự có quyền cho tài khoản chạy API (cùng họ lỗi `identity_namespaces` ngày 7/9). Migration cũng đặt lại quy tắc cấp quyền mặc định cho tài khoản đang chạy migration, để bảng tạo ở các bản sau tự có quyền. Role nào không tồn tại trên máy chủ thì bị bỏ qua; chạy lại được, lần hai không cấp thêm gì.
+- 🟡 **Cố ý KHÔNG đụng:** bảng tài khoản đã có một phần quyền (bảng chỉ-thêm `tier_assignment_events`, `tier_catalog_revisions`, `commerce_order_commission_owners`, `commerce_order_commission_conflicts`), bảng bị thu hết quyền có chủ đích `marketplace_webhook_ingress` và sổ lịch sử migration `_prisma_migrations`. Migration tự kiểm lại sau khi cấp: còn bảng nào tài khoản không có quyền nào (ngoài `marketplace_webhook_ingress`) thì **dừng triển khai** và liệt kê tên bảng, không để lỗi nổi lên ở màn hình sau vài tuần.
+- 🔴 **Việc phải làm tay (nếu môi trường có tài khoản chạy API tách riêng):** migration chạy MỘT lần mỗi cơ sở dữ liệu, nên không bảo vệ bảng được tạo ở bản sau. Sau mỗi lần nâng cấp, chạy câu kiểm chỉ đọc này (thay `creator_os_app` bằng tên tài khoản chạy API). **Ổn = không có dòng nào.** Chạy câu này TRƯỚC khi nâng cấp (cột `chu_bang` cho biết tài khoản sở hữu bảng; tài khoản chạy migration phải sở hữu các bảng đó, nếu không migration dừng ở bước cấp quyền và Prisma chặn các lần `migrate deploy` sau cho tới khi `migrate resolve`) và chạy lại SAU khi nâng. Có dòng thì tài khoản đó sẽ gặp lỗi `42501` ở đúng bảng ấy: báo đội phát triển, đừng cấp tay trừ khi được dặn.
+  `SELECT c.relname, pg_get_userbyid(c.relowner) AS chu_bang FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'creator_os' AND c.relkind IN ('r','p') AND c.relname NOT IN ('marketplace_webhook_ingress', '_prisma_migrations') AND NOT (has_table_privilege('creator_os_app', c.oid, 'SELECT') OR has_table_privilege('creator_os_app', c.oid, 'INSERT') OR has_table_privilege('creator_os_app', c.oid, 'UPDATE') OR has_table_privilege('creator_os_app', c.oid, 'DELETE'));`
+- **Biến môi trường:** không đổi.
+- **Quay lui:** được bằng image cũ. Migration chỉ cấp thêm quyền, không đổi cấu trúc hay dữ liệu; để nguyên quyền đã cấp thì image cũ vẫn chạy bình thường.
+
 ## v1.4.0-rc.4 — 2026-10-19
 
 **Cửa gọi thử riêng của kênh đối tác.** Từ v1.4.0-rc.3 lên có **1 migration mới**, chạy MỘT lần bằng image mới với tài khoản migration (mục 4 của [upgrade.md](upgrade.md)); cộng với các migration đã nêu ở các bản trước, từ v1.3.1 lên là **30 migration**. Migration chỉ thêm một cột, không xoá hay sửa cột và bảng cũ.
