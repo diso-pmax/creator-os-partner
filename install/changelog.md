@@ -39,6 +39,10 @@ có gì thì ghi *"không"*, đừng bỏ trống:
 
 Không đổi.
 
+## v1.4.0-rc.7 — 2026-10-21
+
+Không đổi.
+
 ## v1.4.0-rc.6 — 2026-10-21
 
 **Sửa lỗi: tài khoản ứng dụng và worker còn giữ quyền sửa, xoá trên hai bảng lịch sử hạng chỉ-thêm.** Có **1 migration mới**, chạy MỘT lần bằng image mới với tài khoản migration (mục 4 của [upgrade.md](upgrade.md)). Không đổi biến môi trường; không có việc phải làm tay.
