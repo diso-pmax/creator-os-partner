@@ -39,6 +39,14 @@ có gì thì ghi *"không"*, đừng bỏ trống:
 
 Không đổi.
 
+## v1.4.1 — 2026-10-22
+
+**Vá lỗ hổng Node.js (bản tin bảo mật ngày 21/10): image nền ghim Node `22.23.4`.** Bản tin có ba lỗi mức High trên dòng Node 22 (giải nén Brotli ghi tràn bộ nhớ, kiểm tên miền chứng chỉ TLS bị lách, `dns.resolve` cắt tên); bản đã vá là `v22.23.4`. Image `v1.4.0` mang Node `v22.23.3`, nên bản này dựng lại image trên Node `22.23.4`. **Chỉ đổi image nền**: không migration mới (từ v1.3.0 vẫn là 37 migration), không đổi mã ứng dụng, không đổi hợp đồng.
+
+- **Biến môi trường** — không.
+- **Việc phải làm tay** — không có việc mới. Nâng lên v1.4.1 từ bản cũ đi đúng hướng dẫn nâng v1.4.0 ở mục `v1.4.0` bên dưới, chỉ thay image `v1.4.0` bằng image `v1.4.1` ở bước kéo image. Không nâng qua v1.4.0 rồi mới lên v1.4.1; đi thẳng v1.4.1. Sau khi nâng, kiểm bản Node trong image: `docker run --rm --entrypoint node <kho ảnh Diso cấp>/creator-os/app:v1.4.1 --version` ra `v22.23.4`.
+- **Quay lui** — từ v1.4.1 về v1.4.0 *được bằng image cũ* (hai bản cùng cấu trúc dữ liệu), nhưng image `v1.4.0` mang Node `v22.23.3` chưa vá nên chỉ dùng tạm. Quay lui về bản trước v1.4.0 theo mục `v1.4.0` bên dưới: chỉ khôi phục bản sao lưu.
+
 ## v1.4.0 — 2026-10-21
 
 **v1.4.0 là bản gom `v1.4.0-rc.1` đến `v1.4.0-rc.8`** và là bản đưa lên production từ **v1.3.0**. Đang ở v1.3.0 mà chưa qua `v1.3.1` thì mục `v1.3.1` ở dưới cũng áp dụng cho lần nâng này. Từng mục rc nằm bên dưới, giữ nguyên làm lịch sử.
