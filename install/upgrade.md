@@ -536,6 +536,8 @@ migration thì lần nâng cấp sau sẽ hỏng.
 
 **Ngoại lệ: quay lui "được" về cấu trúc nhưng hỏng dữ liệu âm thầm.** Image cũ chạy được trên cơ sở dữ liệu mới,
 nhưng đọc sai thứ mới ghi, và khôi phục bản sao lưu cũng không phải lối ra (mất mọi dữ liệu sau lúc sao lưu).
+Ví dụ v1.5.0: bản này thêm trường `saleDayAmountMinor` vào cửa `DAY` của `earningCaps.windows[]` (ô *Trần điểm ngày sale* trong Console). **Không có migration**, nên image v1.4.x chạy được trên cơ sở dữ liệu của v1.5.0 và không sập, nhưng 🔴 **KHÔNG được lùi API về v1.4.x khi phiên bản đang chạy của bất kỳ chiến dịch nào còn ô đó**: image cũ bỏ qua ô một cách lặng lẽ (trần ngày sale 600 thành 900, **trả dư tối đa 300 điểm cho mỗi người, mỗi ô đã khai, mỗi ngày sale**), và lưu cấu hình còn ô trả 400, xuất bản chiến dịch trả 409 nên cả chiến dịch kẹt. Muốn lùi: gỡ ô ở mọi chỗ đã khai (Console, hộp Sửa, xoá trống ô, Lưu), **xuất bản lại chiến dịch**, rồi mới đổi image; gỡ giữa ngày sale cũng nâng trần, nên gỡ ngoài ngày sale. Còn không thì sửa tiến. Thứ tự, số đo và phần chưa đo ở mục v1.5.0 của [changelog.md](changelog.md).
+
 Ví dụ v1.3: sau khi có chiến dịch khai brand tài trợ theo hình `{code, name}`, image cũ bỏ hết bản ghi ⇒ người
 chơi mất điểm mà không có lỗi nào. Với những mục như vậy changelog ghi rõ điều kiện, và cách xử là **sửa tiến**
 (vá, phát hành bản sau), không quay lui.

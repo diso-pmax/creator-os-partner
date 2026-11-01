@@ -39,6 +39,21 @@ có gì thì ghi *"không"*, đừng bỏ trống:
 
 Không đổi.
 
+## v1.5.0 — 2026-11-01
+
+**v1.5.0 đi từ dòng v1.4.1, không đi từ develop**: bản cho game Black Friday. So với v1.4.1 có các bản vá tính điểm và hiển thị điểm của game, ô **Trần điểm ngày sale** trong Console, giao diện mùa **Black Friday 2026** và phông chữ màn game của người chơi đúng thiết kế; chi tiết từng thay đổi ở mục *v1.5.0* của trang "Có gì mới" trong Console. **Không migration mới** (cấu trúc dữ liệu giống v1.4.1), không đổi biến môi trường, không đổi hợp đồng đối tác.
+
+- **Biến môi trường** — không.
+- **Việc phải làm tay** — không có việc mới. Nâng lên v1.5.0 từ v1.4.1 đi đúng [upgrade.md](upgrade.md), chỉ thay image `v1.4.1` bằng image `v1.5.0` ở bước kéo image.
+- **Quay lui** — về cấu trúc thì *được bằng image cũ* (không migration), nhưng 🔴 **KHÔNG được lùi API về v1.4.x khi phiên bản đang chạy của bất kỳ chiến dịch nào còn ô *Trần điểm ngày sale*** (trường `earningCaps.windows[].saleDayAmountMinor`, chỉ ở cửa `DAY`). Đo trên tag v1.4.1 với dữ liệu còn ô: image cũ không sập và không báo lỗi ở đường tính điểm, nhưng:
+  - **ô bị bỏ qua lặng lẽ**: trần ngày sale rơi về trần thường nhân hệ số (ví dụ 600 thành 900), tức **trả dư tối đa 300 điểm cho mỗi người, mỗi ô đã khai, mỗi ngày sale** trong ví dụ đó;
+  - **lưu cấu hình còn ô trả 400 và xuất bản chiến dịch trả 409** (`Unrecognized key(s)`): yêu cầu mang cụm trần còn ô bị từ chối (hộp Sửa chứa ô luôn gửi lại cụm đó, nên lưu từ hộp đó lỗi; chỉ đổi tiêu đề thì vẫn 200), và xuất bản bị chặn cả khi chỉ bản nháp đang mở còn ô, nên cả chiến dịch kẹt cho tới khi gỡ ô;
+  - thẻ người chơi và màn hỗ trợ người chơi mất hiển thị mức trần đó.
+  
+  **Muốn lùi, làm theo thứ tự này TRƯỚC khi đổi image:** (1) ở Console, mở từng hộp **Sửa** có ô *Trần điểm ngày sale* (đường đi ở bài hướng dẫn *X2 điểm ngày sale* của Console), **xoá trống** ô rồi **Lưu**; (2) **xuất bản lại chiến dịch**, vì với chiến dịch đã xuất bản thì Lưu chỉ ghi vào bản nháp (màn hiện *Chờ xuất bản*) và chưa có hiệu lực cho tới khi xuất bản; (3) chỉ khi phiên bản đang chạy của mọi chiến dịch không còn ô này mới đổi image. Làm đúng thứ tự thì image v1.4.1 đọc sạch: ô chỉ còn trong phiên bản chiến dịch đã xuất bản cũ (bất biến), không gây lỗi trong các lệnh đã đo. Gỡ **giữa ngày sale** nâng trần ngày ở chỗ đó lên trần thường nhân hệ số (ví dụ 450 × 2 = 900 thay vì 600) cho phần còn lại của ngày: điểm đã trả không bị thu hồi nhưng được trả thêm; muốn tránh thì gỡ ngoài ngày sale. Lỡ lùi khi còn ô: gỡ ô rồi xuất bản lại ngay trên image v1.4.1 (đo qua API: lưu không kèm ô trả 200, xuất bản trả 201); cách khác là **sửa tiến** (vá, phát hành bản sau).
+  
+  **Chưa đo, không khẳng định:** giao diện Console thật (cả Console v1.4.x trên API cũ lẫn Console v1.5 trên API cũ, kể cả chữ *Chờ xuất bản*); nhánh `release/v1.4` hiện tại (đo trên tag v1.4.1; nhánh hơn tag 18 file, không file nào thuộc phần tính điểm, trần hay xử lý sự kiện); điểm danh (CHECKIN) trên v1.4.1; chỉ đo một múi giờ, một người chơi, cơ sở dữ liệu test nhỏ. Xem đoạn *Ngoại lệ* ở mục 7 của [upgrade.md](upgrade.md).
+
 ## v1.4.1 — 2026-10-22
 
 **Vá lỗ hổng Node.js (bản tin bảo mật ngày 21/10): image nền ghim Node `22.23.4`.** Bản tin có ba lỗi mức High trên dòng Node 22 (giải nén Brotli ghi tràn bộ nhớ, kiểm tên miền chứng chỉ TLS bị lách, `dns.resolve` cắt tên); bản đã vá là `v22.23.4`. Image `v1.4.0` mang Node `v22.23.3`, nên bản này dựng lại image trên Node `22.23.4`. **Chỉ đổi image nền**: không migration mới (từ v1.3.0 vẫn là 37 migration), không đổi mã ứng dụng, không đổi hợp đồng.
