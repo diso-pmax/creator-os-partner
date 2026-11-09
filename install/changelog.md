@@ -39,6 +39,18 @@ có gì thì ghi *"không"*, đừng bỏ trống:
 
 Không đổi.
 
+## v1.5.1 — 2026-11-09
+
+**Sửa dựng image all-in-one: `ansible-core` và `openssh-client` ghim theo dòng minor, không ghim cứng bản dựng lại.** Từ 05/11 lượt dựng kế tiếp sẽ gãy vì Alpine đã gỡ đúng bản `openssh-client=10.3_p1-r1` mà Dockerfile ghim cứng. Nay Dockerfile ghim `ansible-core~2.21` và `openssh-client~10.3`: giữ nguyên dòng minor (ansible-core 2.21.x, OpenSSH 10.3.x) và nhận các bản dựng lại `-rN` cùng bản vá Alpine phát hành trong dòng đó. Image đã phát hành không đổi; chỉ image dựng từ nhánh này SAU thay đổi này mang ghim mới. Muốn nâng sang dòng minor khác thì đọc changelog của ansible-core và OpenSSH trước, vì container này SSH ra máy của khách (chú thích ở `infra/all-in-one.Dockerfile`).
+
+**Đối soát reward: CSV kỳ có thêm cột để so khớp với danh sách của đối tác.** (v1.5.1) Ngoài 13 cột đã có, CSV kỳ có thêm khoá khớp (`ĐƠN:<mã đơn>` hoặc `HĐ:<mã sự kiện đối tác>`), loại của lượt, mã đơn, trạng thái đơn, ngày tạo, giá trị, tiền tệ, brand, mã hành vi, mã sự kiện huỷ, giờ huỷ và ghi chú; ô không có dữ liệu để trống thật. Cách tải và quyền không đổi.
+
+- 🟡 **NÊN BIẾT — thay đổi có thể làm hỏng script đang đọc CSV kỳ: cột "Mã sự kiện" của CSV kỳ nay là mã của đối tác (tiêu đề "Mã sự kiện đối tác"); UUID nội bộ chuyển xuống cột cuối "Mã nội bộ"; CSV giữ 13 cột đầu cùng thứ tự, cột mới nối phía sau; định dạng giờ của CSV không đổi.** Ô này để trống cho điểm danh và cho mã nền sinh (`v1:`).
+
+- **Biến môi trường** — không.
+- **Việc phải làm tay** — không.
+- **Quay lui** — *được bằng image cũ* (không migration, không đổi cấu trúc dữ liệu). 🟡 **Sau khi quay lui: CSV kỳ trở lại 13 cột; cột "Mã sự kiện" lại là UUID nội bộ của sự kiện. Cột "Mã sự kiện" của CSV kỳ nay là mã của đối tác; UUID nội bộ chuyển xuống cột cuối; CSV giữ 13 cột đầu cùng thứ tự — script đã chuyển sang đọc mã đối tác ở cột đó phải đổi lại khi quay lui.**
+
 ## v1.5.0 — 2026-11-01
 
 **v1.5.0 đi từ dòng v1.4.1, không đi từ develop**: bản cho game Black Friday. So với v1.4.1 có các bản vá tính điểm và hiển thị điểm của game, ô **Trần điểm ngày sale** trong Console, giao diện mùa **Black Friday 2026** và phông chữ màn game của người chơi đúng thiết kế; chi tiết từng thay đổi ở mục *v1.5.0* của trang "Có gì mới" trong Console. **Không migration mới** (cấu trúc dữ liệu giống v1.4.1), không đổi biến môi trường, không đổi hợp đồng đối tác.
