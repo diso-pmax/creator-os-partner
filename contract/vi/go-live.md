@@ -24,7 +24,7 @@ Tick hết mọi mục trước khi bật tích hợp này cho người dùng th
 - [ ] `occurredAt` là **lúc việc xảy ra**, không phải lúc bạn gửi
 - [ ] Bạn biết hai hạn `occurredAt` của mình — hạn trễ và hạn lệch tương lai — và độ trễ giao hàng **tệ nhất** của bạn (hàng đợi dồn, lô chạy đêm, một lần sự cố đã từng xảy ra thật) vẫn nằm trong hạn trễ ([event-ingestion.md §5.4](./event-ingestion.md#54-occurredat--hai-cái-hạn))
 - [ ] 🔒 Một `422 event_too_late` hay `event_from_future` **không bao giờ** khiến code của bạn cấp `eventId` mới rồi gửi lại — làm vậy là biến một sự kiện trễ thành hai sự kiện kinh tế
-- [ ] `amountMinor` là **số nguyên ở đơn vị nhỏ nhất**, đi kèm `currency`
+- [ ] `amountMinor` của sự kiện đơn là **số tiền của đơn bằng VND** *(đơn 250.000đ ⇒ `250000`, hai trăm năm mươi nghìn đồng)*, đi kèm `currency`
 - [ ] Một đơn hàng qua nhiều trạng thái sinh ra **nhiều `eventId`**, dùng chung một `orderId`
 
 **Vận hành**

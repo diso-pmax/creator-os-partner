@@ -39,6 +39,41 @@ có gì thì ghi *"không"*, đừng bỏ trống:
 
 Không đổi.
 
+## v1.5.2 — 2026-11-11
+
+- 🟡 **NÊN BIẾT — migration đổi dữ liệu của sự kiện đơn đối tác: `payload.amountMinor` của sự kiện `ORDER_CREATED` / `ORDER_COMPLETED` / `ORDER_CANCELLED` nhận qua cửa đối tác (webhook, kéo lại) trước lúc nâng cấp được chia 100 và làm tròn tới đồng, về VND.** Số gốc của từng dòng nằm ở bảng mới `economic_event_corrections` (bất biến). Migration `20261110180000_6578_order_amount_vnd_scale` chạy trong một giao dịch, **khoá ghi vào `economic_events` trong lúc chạy** (cửa nhận sự kiện chờ, hết hạn khoá 10 giây thì cả migration rollback) và đổi số theo từng dòng; thời gian chạy tỉ lệ với số đơn đối tác đã nhận. Nguồn nào có trung vị số tiền đơn dưới 1.000.000 được coi là đã gửi VND và **bị bỏ qua** (có `WARNING` trong log máy chủ Postgres, không in tên nguồn; `prisma migrate deploy` không in dòng này ra màn hình). Tệp xuất đối soát và màn tra cứu tự hiện đúng sau migration vì cùng đọc `payload`. Trên dữ liệu của bản cài đã kiểm, việc chấm điểm không đổi kết quả; bản cài khác nên đếm, trước khi nâng cấp, số đơn thuộc diện trên có giá trị sau khi chia 100 nằm dưới ngưỡng giá trị đơn tối thiểu mà chương trình thưởng của mình đang đặt. Phần còn lại cần biết: nguồn đã gửi đúng VND mà trung vị giá trị đơn từ 1.000.000đ (một triệu đồng) trở lên vẫn bị chia 100, số gốc của những đơn đó nằm ở `economic_event_corrections`.
+- **Kiểm sau nâng cấp (chạy ngay sau khi migration xong, trước khi đối tác đổi cách gửi):** chạy bằng tài khoản migration (có `BYPASSRLS`, mục 4d của [upgrade.md](upgrade.md)). Ở bản cài đã nhận đơn đối tác: chạy sai tài khoản thì cả câu (1) và câu (2) cùng ra 0, khi đó số 0 ở câu (2) không có nghĩa là ổn; chạy đúng tài khoản thì ít nhất một trong hai câu khác 0. (1) `SELECT count(*) FROM creator_os.economic_event_corrections WHERE correction_code = 'ORDER_AMOUNT_VND_SCALE';` là số đơn đã đổi; (2) số hàng còn thoả bốn điều kiện chọn mà chưa có dòng nhật ký, kỳ vọng **0** nếu không nguồn nào bị bỏ qua (đơn nhận sau lúc nâng cấp cũng thoả bốn điều kiện nên phải chặn theo giờ nâng cấp: điền vào `<giờ nâng cấp>` giá trị `started_at` của migration này trong `creator_os._prisma_migrations`):
+  ```sql
+  SELECT count(*) FROM creator_os.economic_events e
+  WHERE e.event_type IN ('ORDER_CREATED', 'ORDER_COMPLETED', 'ORDER_CANCELLED')
+    AND e.ingress_channel IN ('WEBHOOK', 'BACKFILL')
+    AND e.payload ->> 'currency' = 'VND'
+    AND jsonb_typeof(e.payload -> 'amountMinor') = 'number'
+    AND e.received_at < '<giờ nâng cấp>'
+    AND NOT EXISTS (SELECT 1 FROM creator_os.economic_event_corrections c
+                    WHERE c.event_id = e.id AND c.correction_code = 'ORDER_AMOUNT_VND_SCALE');
+  ```
+  Khác 0 thì đó là các đơn của nguồn bị bỏ qua vì trung vị dưới 1.000.000; dòng `WARNING` tương ứng nằm ở log máy chủ Postgres, `prisma migrate deploy` không in ra.
+- **Quay lui** — 🟡 **migration này đổi dữ liệu nên quay lui bằng image cũ KHÔNG đảo số về thang cũ**; muốn đảo phải mở trigger append-only một lần từ `old_value` của `economic_event_corrections` (runbook, cần hỏi kỹ thuật).
+
+- 🟡 **NÊN BIẾT — xuất CSV của kỳ đối soát reward nay chạy nền; route cũ `GET /reward-reconciliation-periods/:id/export.csv` trả `410 export_moved_to_background` (một bản phát hành rồi gỡ).** Tệp do worker dựng theo dòng chảy: tạo việc bằng `POST …/exports`, xem tiến độ bằng `GET …/exports/:jobId`, tải bằng `GET …/exports/:jobId/download` (link ký 15 phút, tệp giữ 7 ngày). Script hay tích hợp đang gọi thẳng route cũ phải chuyển sang ba route mới. Cần **worker + Redis + MinIO** đang chạy; thiếu kho tệp thì tạo việc trả `503 export_storage_unavailable`. Màn Console của kỳ đối soát chuyển sang luồng mới ở cùng bản.
+- Biến môi trường mới, đều có mặc định: `EXPORT_RETENTION_DAYS` (7), `EXPORT_LINK_TTL_SECONDS` (900), `EXPORT_RETENTION_SWEEP_MS` (3.600.000), `EXPORT_RETENTION_BATCH` (200), `EXPORT_HEAVY_CONCURRENCY` (2), `EXPORT_MAX_ACTIVE_PER_UNIT` (10), `EXPORT_STALE_SECONDS` (180), `EXPORT_QUEUE_SWEEP_MS` (60.000), `EXPORT_ASOF_SAFETY_SECONDS` (300), `EXPORT_JOB_MAX_SECONDS` (900), `EXPORT_JOB_MAX_EVENTS` (2.000.000), `MINIO_PART_SIZE_MB` (16). Xem `.env.example`.
+- 🟡 **NÊN BIẾT — việc phải làm tay để xuất nền chạy được:** (1) `RUN_WORKER=true` ở đúng **một** máy chủ: thiếu nó thì việc xuất đứng ở `PENDING` mãi, không có tiến trình nào nhận; (2) Redis dùng cho hàng đợi đặt `maxmemory-policy noeviction`: chính sách khác có thể xoá khoá của hàng đợi khi hết bộ nhớ và làm mất việc đang chờ; (3) MinIO tự dọn upload dở nhờ `stale_uploads_expiry` (24 giờ) và `stale_uploads_cleanup_interval` (6 giờ): một lần ghi tệp lớn bị cắt giữa chừng có thể để lại phần dở tối đa khoảng 24 giờ cộng một chu kỳ quét trước khi kho dọn; không dùng luật vòng đời `--expire-days` cho việc này vì luật đó xoá cả đối tượng thật.
+- **Quay lui** — *được bằng image cũ* (cột `export_jobs` thêm vào cho phép NULL). 🟡 **Sau khi quay lui: route cũ `export.csv` lại trả tệp trực tiếp; việc xuất nền đang chạy hoặc đang chờ bị bỏ lại ở trạng thái đang mở, nên chờ hết việc `PENDING`/`PROCESSING` trước khi quay lui.**
+
+**Một cột mới cho bảng ghi lượt thực hiện của người chơi: lý do thu hồi.** Migration của bản này thêm một cột văn bản cho phép rỗng và hai ràng buộc kiểm tra. Cột không có giá trị mặc định nên chỉ đổi danh mục, không viết lại bảng; hai ràng buộc thêm ở dạng không kiểm lại hàng có sẵn (mọi hàng có sẵn đều rỗng; hàng mới và hàng sửa vẫn bị kiểm), nên không quét bảng. Migration chỉ giữ khoá bảng trong khoảnh khắc và chờ khoá tối đa 10 giây: nếu bảng đang bận quá lâu, migration báo lỗi và không đổi gì, chạy lại lúc vắng là được. Migration chạy cùng image như mọi bản.
+
+- **Biến môi trường:** không.
+- **Việc phải làm tay:** không.
+- **Quay lui:** được bằng image cũ. Image cũ bỏ qua cột này; quay lui chỉ đưa hành vi về như cũ (lượt bị thu hồi tay lại được trả trần điểm), không hỏng dữ liệu.
+- 🟡 **NÊN BIẾT — giới hạn đã biết:** lượt đã thu hồi trước bản này không có lý do ghi lại và được tính là *không giữ trần điểm*. Lượt thu hồi tay làm trước khi nâng cấp đã trả trần điểm; không có bước bù dữ liệu.
+
+**Màn của người chơi: tiêu đề ở thanh trên hiện đủ dấu tiếng Việt.** Trước bản này, chữ mang hai dấu chồng bị mất phần dấu phía trên: "Đổi tên" đọc thành "Đôi tên", "Điểm của bạn" thiếu nét ở chữ "ể". Nay tiêu đề hiện trọn dấu ở mọi bề rộng màn và ở mọi giao diện theo mùa; tiêu đề vẫn nằm trên một dòng, chiều cao thanh và vị trí các nút không đổi.
+
+- **Biến môi trường:** không.
+- **Việc phải làm tay:** không.
+- **Quay lui:** được bằng image cũ (không migration, không đổi dữ liệu); quay lui thì tiêu đề lại mất phần dấu phía trên như trước.
+
 ## v1.5.1 — 2026-11-09
 
 **Sửa dựng image all-in-one: `ansible-core` và `openssh-client` ghim theo dòng minor, không ghim cứng bản dựng lại.** Từ 05/11 lượt dựng kế tiếp sẽ gãy vì Alpine đã gỡ đúng bản `openssh-client=10.3_p1-r1` mà Dockerfile ghim cứng. Nay Dockerfile ghim `ansible-core~2.21` và `openssh-client~10.3`: giữ nguyên dòng minor (ansible-core 2.21.x, OpenSSH 10.3.x) và nhận các bản dựng lại `-rN` cùng bản vá Alpine phát hành trong dòng đó. Image đã phát hành không đổi; chỉ image dựng từ nhánh này SAU thay đổi này mang ghim mới. Muốn nâng sang dòng minor khác thì đọc changelog của ansible-core và OpenSSH trước, vì container này SSH ra máy của khách (chú thích ở `infra/all-in-one.Dockerfile`).

@@ -25,7 +25,7 @@ Check every box before enabling this integration against real users. 🔒 items 
 - [ ] `occurredAt` is **when it happened**, not when you send it
 - [ ] You know your two `occurredAt` limits — lateness and future skew — and your **worst-case** delivery lag (queue backlog, nightly batch, an outage you have actually had) fits inside the lateness one ([event-ingestion.md §5.4](./event-ingestion.md#54-occurredat--the-two-deadlines))
 - [ ] 🔒 A `422 event_too_late` or `event_from_future` **never** makes your code mint a new `eventId` and resend — that turns one late event into two economic events
-- [ ] `amountMinor` is an **integer in the smallest currency unit**, paired with `currency`
+- [ ] `amountMinor` of an order event is **the order amount in VND** *(a 250,000đ order ⇒ `250000`, two hundred fifty thousand VND)*, paired with `currency`
 - [ ] An order moving through multiple states produces **multiple `eventId`s**, sharing one `orderId`
 
 **Operations**

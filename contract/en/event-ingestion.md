@@ -128,12 +128,13 @@ EVENT_KEY=$(node -e '
     Buffer.from(hkdfSync("sha256", ikm, Buffer.alloc(0), info, 32)).toString("base64url"));
 ' "$MASTER_SECRET" "$EVENT_VERSION")
 
-BODY='{"specversion":"1.0","eventId":"evt-88421","externalUserId":"12345","type":"ORDER_COMPLETED","occurredAt":"2026-08-14T09:12:33Z","confidence":"SERVER_OBSERVED","payload":{"orderId":"SO-99881","amountMinor":250000000,"currency":"VND"}}'
+# amountMinor in the body: 250000 (two hundred fifty thousand VND)
+BODY='{"specversion":"1.0","eventId":"evt-88421","externalUserId":"12345","type":"ORDER_COMPLETED","occurredAt":"2026-08-14T09:12:33Z","confidence":"SERVER_OBSERVED","payload":{"orderId":"SO-99881","amountMinor":250000,"currency":"VND"}}'
 TS=1786698753
 
 SIG="sha256=$(printf '%s.%s' "$TS" "$BODY" \
       | openssl dgst -sha256 -hmac "$EVENT_KEY" -r | cut -d' ' -f1)"   # base64url string, used AS-IS
-# → sha256=ae00dc858385fdb65061fda5da1809772f8f602f5d653052e7672516c4d59176
+# → sha256=6e4d31e0140b1896af6181b9f64c9f22c17eaa8227eee034dbdded0a59f9b01b
 
 curl -sS -D- "$API/integrations/events" \
   -H "Content-Type: application/json" \
@@ -206,7 +207,7 @@ Two more, if you want certainty:
   "type":           "ORDER_COMPLETED",       // closed catalog, §5.2
   "occurredAt":     "2026-08-14T09:12:33Z",  // when it HAPPENED, not when you send it
   "confidence":     "SERVER_OBSERVED",       // §5.1
-  "payload":        { "orderId": "SO-99881", "amountMinor": 250000000, "currency": "VND" }
+  "payload":        { "orderId": "SO-99881", "amountMinor": 250000, "currency": "VND" }   // amountMinor: 250000 (two hundred fifty thousand VND)
 }
 ```
 
@@ -290,8 +291,15 @@ Two more things about timing:
 `ORDER_CREATED` / `ORDER_COMPLETED` / `ORDER_CANCELLED`:
 
 ```jsonc
-{ "orderId": "SO-99881", "amountMinor": 250000000, "currency": "VND", "brandCode": "SHOPEE" }
+{ "orderId": "SO-99881", "amountMinor": 250000, "currency": "VND", "brandCode": "SHOPEE" }   // amountMinor: 250000 (two hundred fifty thousand VND)
 ```
+
+| Field | What it is |
+|---|---|
+| `orderId` | **your** order id, a string; keep it the same through every state of the same order |
+| `amountMinor` | the order value in **VND** *(a 250,000đ order ⇒ `250000`, two hundred fifty thousand VND)*; it is compared with the program's order-value threshold |
+| `currency` | the currency of that number |
+| `brandCode` | the sponsor brand of the order, described right below |
 
 🔴 **`brandCode` tells us which sponsor brand an order belongs to.** Some campaigns offer a reward only
 for orders at a fixed list of sponsor brands *(e.g. a reward for a first order at a sponsor brand, or for

@@ -282,12 +282,13 @@ and *did you sign correctly*. Getting either wrong produces the same `401`.
 ```text
 secret     :  whsec_demo_0123456789abcdef
 timestamp  :  1786698753
-body       :  {"specversion":"1.0","eventId":"evt-88421","externalUserId":"12345","type":"ORDER_COMPLETED","occurredAt":"2026-08-14T09:12:33Z","confidence":"SERVER_OBSERVED","payload":{"orderId":"SO-99881","amountMinor":250000000,"currency":"VND"}}
-             (234 bytes, NO trailing newline)
+body       :  {"specversion":"1.0","eventId":"evt-88421","externalUserId":"12345","type":"ORDER_COMPLETED","occurredAt":"2026-08-14T09:12:33Z","confidence":"SERVER_OBSERVED","payload":{"orderId":"SO-99881","amountMinor":250000,"currency":"VND"}}
+             (231 bytes, NO trailing newline)
+             amountMinor in the body = 250000 (two hundred fifty thousand VND)
 
 signing string :  1786698753.{"specversion":"1.0",…}
 
-RESULT     :  sha256=ae00dc858385fdb65061fda5da1809772f8f602f5d653052e7672516c4d59176
+RESULT     :  sha256=6e4d31e0140b1896af6181b9f64c9f22c17eaa8227eee034dbdded0a59f9b01b
 ```
 
 ### 2.2 LAUNCH channel — reuses `EventIngressSignatureV1`
@@ -347,7 +348,8 @@ RESULT      :  v1:8d3f182a04c6d2bcb51a2e6f0201039af53aa777c6aa18236b3c6eae53083b
 
 ```bash
 # EVENT channel (§2.1)
-printf '%s.%s' 1786698753 '{"specversion":"1.0","eventId":"evt-88421","externalUserId":"12345","type":"ORDER_COMPLETED","occurredAt":"2026-08-14T09:12:33Z","confidence":"SERVER_OBSERVED","payload":{"orderId":"SO-99881","amountMinor":250000000,"currency":"VND"}}' \
+# amountMinor in the body: 250000 (two hundred fifty thousand VND)
+printf '%s.%s' 1786698753 '{"specversion":"1.0","eventId":"evt-88421","externalUserId":"12345","type":"ORDER_COMPLETED","occurredAt":"2026-08-14T09:12:33Z","confidence":"SERVER_OBSERVED","payload":{"orderId":"SO-99881","amountMinor":250000,"currency":"VND"}}' \
   | openssl dgst -sha256 -hmac 'whsec_demo_0123456789abcdef' -r | cut -d' ' -f1
 
 # LAUNCH channel (§2.2) — same scheme as EVENT, different secret

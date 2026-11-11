@@ -64,13 +64,14 @@ public class KyGoiTin {
     // ── Tự kiểm bằng VECTOR CỐ ĐỊNH (hợp đồng, Phụ lục B.1) ─────────────────────────────────────
     private static final String V_BI_MAT = "whsec_demo_0123456789abcdef";
     private static final long   V_TS     = 1786698753L;
+    // amountMinor trong thân = 250000 (hai trăm năm mươi nghìn đồng) / amountMinor in the body = 250000 (two hundred fifty thousand VND)
     private static final String V_THAN   =
         "{\"specversion\":\"1.0\",\"eventId\":\"evt-88421\",\"externalUserId\":\"12345\","
       + "\"type\":\"ORDER_COMPLETED\",\"occurredAt\":\"2026-08-14T09:12:33Z\","
       + "\"confidence\":\"SERVER_OBSERVED\",\"payload\":{\"orderId\":\"SO-99881\","
-      + "\"amountMinor\":250000000,\"currency\":\"VND\"}}";
+      + "\"amountMinor\":250000,\"currency\":\"VND\"}}";
     private static final String V_CHU_KY =
-        "sha256=ae00dc858385fdb65061fda5da1809772f8f602f5d653052e7672516c4d59176";
+        "sha256=6e4d31e0140b1896af6181b9f64c9f22c17eaa8227eee034dbdded0a59f9b01b";
 
     public static void main(String[] args) throws Exception {
         boolean tuKiem = false;

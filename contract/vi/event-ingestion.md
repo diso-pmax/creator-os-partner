@@ -129,13 +129,14 @@ EVENT_KEY=$(node -e '
     Buffer.from(hkdfSync("sha256", ikm, Buffer.alloc(0), info, 32)).toString("base64url"));
 ' "$MASTER_SECRET" "$EVENT_VERSION")
 
-BODY='{"specversion":"1.0","eventId":"evt-88421","externalUserId":"12345","type":"ORDER_COMPLETED","occurredAt":"2026-08-14T09:12:33Z","confidence":"SERVER_OBSERVED","payload":{"orderId":"SO-99881","amountMinor":250000000,"currency":"VND"}}'
+# amountMinor trong thân: 250000 (hai trăm năm mươi nghìn đồng)
+BODY='{"specversion":"1.0","eventId":"evt-88421","externalUserId":"12345","type":"ORDER_COMPLETED","occurredAt":"2026-08-14T09:12:33Z","confidence":"SERVER_OBSERVED","payload":{"orderId":"SO-99881","amountMinor":250000,"currency":"VND"}}'
 TS=$(date +%s)          # epoch GIÂY — không phải mili-giây
 
 # ⚠️ `$EVENT_KEY` là chuỗi base64url. Dùng NGUYÊN VĂN làm khoá HMAC — KHÔNG giải base64 lần nữa.
 SIG="sha256=$(printf '%s.%s' "$TS" "$BODY" \
       | openssl dgst -sha256 -hmac "$EVENT_KEY" -r | cut -d' ' -f1)"
-# → sha256=ae00dc858385fdb65061fda5da1809772f8f602f5d653052e7672516c4d59176
+# → sha256=6e4d31e0140b1896af6181b9f64c9f22c17eaa8227eee034dbdded0a59f9b01b
 
 curl -sS -D- "$API/integrations/events" \
   -H "Content-Type: application/json" \
@@ -211,7 +212,7 @@ Hai lượt nữa nếu bạn muốn chắc:
   "type":           "ORDER_COMPLETED",       // danh mục đóng, §5.2
   "occurredAt":     "2026-08-14T09:12:33Z",  // lúc việc XẢY RA, không phải lúc bạn gửi
   "confidence":     "SERVER_OBSERVED",       // §5.1
-  "payload":        { "orderId": "SO-99881", "amountMinor": 250000000, "currency": "VND" }
+  "payload":        { "orderId": "SO-99881", "amountMinor": 250000, "currency": "VND" }   // amountMinor: 250000 (hai trăm năm mươi nghìn đồng)
 }
 ```
 
@@ -294,8 +295,15 @@ Hai điều nữa về thời điểm:
 `ORDER_CREATED` / `ORDER_COMPLETED` / `ORDER_CANCELLED`:
 
 ```jsonc
-{ "orderId": "SO-99881", "amountMinor": 250000000, "currency": "VND", "brandCode": "SHOPEE" }
+{ "orderId": "SO-99881", "amountMinor": 250000, "currency": "VND", "brandCode": "SHOPEE" }   // amountMinor: 250000 (hai trăm năm mươi nghìn đồng)
 ```
+
+| Trường | Là gì |
+|---|---|
+| `orderId` | mã đơn **của bạn**, dạng chuỗi; giữ nguyên qua mọi trạng thái của cùng một đơn |
+| `amountMinor` | giá trị đơn bằng **VND** *(đơn 250.000đ ⇒ `250000`, hai trăm năm mươi nghìn đồng)*; dùng để so với ngưỡng giá trị đơn của chương trình |
+| `currency` | đồng tiền của số trên |
+| `brandCode` | mã brand tài trợ của đơn, như mô tả ngay dưới |
 
 🔴 **`brandCode` cho biết một đơn thuộc brand tài trợ nào.** Một số chiến dịch chỉ trao quyền lợi cho đơn
 đặt tại một danh sách brand tài trợ cố định *(ví dụ quyền lợi cho đơn đầu tại một brand tài trợ, hoặc cho
