@@ -39,6 +39,10 @@ có gì thì ghi *"không"*, đừng bỏ trống:
 
 Không đổi.
 
+## v1.5.4 — 2026-11-15
+
+Không đổi.
+
 ## v1.5.3 — 2026-11-13
 
 - 🟡 **NÊN BIẾT — migration `20261112100000_5710_remove_player_support_reverse_permission` xoá quyền `player_support:reverse` (Thu hồi điểm).** Migration gỡ quyền này khỏi **mọi vai đang giữ** (vai hệ thống và vai riêng của mọi đơn vị), rồi xoá dòng quyền. Chạy lại không đổi gì thêm. Danh mục quyền lúc khởi tạo không còn mã này, nên cơ sở dữ liệu mới không có nó. Đi kèm, nút **Thu hồi** ở Tra cứu người chơi và cửa máy chủ thu hồi một dòng điểm của người chơi (đường `…/reverse` thuộc nhóm `player-support`, nay trả `404`) bị gỡ; Không còn chỗ nào trong Console hay API của bản này đòi quyền đó.
