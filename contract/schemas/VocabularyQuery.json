@@ -1,0 +1,10 @@
+{
+  "type": "object",
+  "properties": {},
+  "additionalProperties": false,
+  "title": "VocabularyQuery",
+  "description": "Body of POST /integrations/vocabulary: an empty object. Nothing to ask, the answer is the platform's published list.",
+  "x-serverSideChecks": [
+    "the body must be exactly {}: any other field is refused with 400"
+  ]
+}

@@ -168,6 +168,51 @@ paths:
           description: "The receipt(s): deliveryId, externalId, eventSource, outcome, receivedAt."
         "400": *a1
         "401": *a2
+  /integrations/vocabulary:
+    post:
+      tags:
+        - events
+      operationId: readVocabulary
+      summary: Read the canonical vocabulary the platform publishes
+      description: "Read-only (POST so it is signed exactly like the EVENT channel). Returns the behavior codes (`actionKey` of a `UI_ACTION` event) and the sponsor brand codes (`brandCode` of an order) the platform names, each with a Vietnamese and an English description. The same list for every partner. It guides your adapter; it does not block anything: an event with a code that is not listed is still accepted. See event-ingestion.md."
+      security:
+        - eventHmac: []
+      parameters:
+        - name: X-API-Key
+          in: header
+          required: true
+          schema:
+            type: string
+          description: Your access key id.
+        - name: X-Timestamp
+          in: header
+          required: true
+          schema:
+            type: string
+            pattern: ^\d{1,12}$
+          description: Unix seconds. Accepted within +-5 minutes.
+        - name: X-Signature
+          in: header
+          required: true
+          schema:
+            type: string
+            pattern: ^sha256=[0-9a-f]{64}$
+          description: sha256=hex(HMAC-SHA256(EVENT_SECRET, "<X-Timestamp>.<raw body>")). Sign the exact bytes you send.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/VocabularyQuery"
+      responses:
+        "200":
+          description: The vocabulary, sorted by kind then code.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Vocabulary"
+        "400": *a1
+        "401": *a2
   /integrations/reconciliation:
     post:
       tags:
@@ -584,6 +629,56 @@ components:
       x-serverSideChecks:
         - "amounts are decimal strings, already settled and frozen: do not recompute them"
         - deliveryNonce is new on every real call; you MUST reject a nonce you have already seen (409)
+    VocabularyQuery:
+      type: object
+      properties: {}
+      additionalProperties: false
+      title: VocabularyQuery
+      description: "Body of POST /integrations/vocabulary: an empty object. Nothing to ask, the answer is the platform's published list."
+      x-serverSideChecks:
+        - "the body must be exactly {}: any other field is refused with 400"
+    Vocabulary:
+      type: object
+      properties:
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              code:
+                type: string
+                pattern: ^[A-Za-z0-9_-]{1,64}$
+              kind:
+                type: string
+                enum:
+                  - UI_ACTION
+                  - BRAND
+              description:
+                type: object
+                properties:
+                  vi:
+                    type: string
+                    minLength: 1
+                  en:
+                    type: string
+                    minLength: 1
+                required:
+                  - vi
+                  - en
+                additionalProperties: false
+            required:
+              - code
+              - kind
+              - description
+            additionalProperties: false
+      required:
+        - items
+      additionalProperties: false
+      title: Vocabulary
+      description: "What POST /integrations/vocabulary answers: the canonical vocabulary the platform publishes (behavior codes and sponsor brand codes), the same list for every partner."
+      x-serverSideChecks:
+        - "a code that is not listed is still accepted by the event door: the vocabulary guides your adapter, it blocks nothing"
+        - codes are case-sensitive and compared as raw strings; no two listed codes differ only by case
     SettlementTest:
       type: object
       properties:

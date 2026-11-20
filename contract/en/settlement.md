@@ -372,7 +372,7 @@ order**:
 |---|---|---|
 | 1 | Mã đợt | batch reference — `settlementRef` |
 | 2 | Mã dòng | line reference — `settlementItemId`; **copy it into your `POINT_REDEEMED` event** |
-| 3 | Mã người chơi | our internal id — `partyId` |
+| 3 | Mã nội bộ hệ thống (để rà soát) | our internal id — `partyId`; for our own review, you do not need it |
 | 4 | Mã người chơi (đối tác) | **your** id for the user — `externalUserId`; **empty** when we cannot read it exactly (the line state says why) |
 | 5 | Mệnh giá điểm | point denomination |
 | 6 | Số điểm | points |

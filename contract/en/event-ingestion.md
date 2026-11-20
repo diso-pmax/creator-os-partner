@@ -305,7 +305,7 @@ Two more things about timing:
 for orders at a fixed list of sponsor brands *(e.g. a reward for a first order at a sponsor brand, or for
 orders at several distinct sponsor brands)*. An order is counted for such a reward **only if** its
 `brandCode` **exactly matches** one of the brand codes the campaign configured. **We define the brand
-codes** *(e.g. `SHOPEE`, `LAZADA`)*; you send that exact string — same rule as `actionKey` below.
+codes** *(e.g. `SHOPEE`, `LAZADA`; the full list is in the table further down in this section)*; you send that exact string — same rule as `actionKey` below.
 
 ⚠️ **Case-sensitive, compared as a raw string.** `SHOPEE` ≠ `Shopee` ≠ `shopee`. Get the case wrong —
 or omit `brandCode` — and the order is **still accepted and still returns `200`**, but it is **never
@@ -333,7 +333,7 @@ order — those rewards stay counted. One order, one `orderId`, across `ORDER_CR
 `UI_ACTION` — **`actionKey` is REQUIRED**:
 
 ```jsonc
-{ "actionKey": "<canonical-action-key-assigned-to-you>" }
+{ "actionKey": "<a behavior code from the published vocabulary>" }
 ```
 
 `POINT_REDEEMED` — **you paid, you report back** *(opened 2026-09-03)*:
@@ -394,11 +394,41 @@ which behavior you just reported. `actionKey` is a **canonical semantic identifi
 defines** — you map your internal representation to it at your own boundary, you do not invent it and
 report it to us.
 
-We do not publish one fixed global list here — the exact strings depend on which UI behaviors your
-integration is configured for, and that set changes whenever a campaign is configured. Read the current
-set for your own campaign from its campaign screen in the console, or ask your onboarding contact. Do not copy an
-`actionKey` you saw for a different integration or a different campaign — it may no longer be the value
-that campaign is configured to match.
+**The platform publishes the codes it names: one list, the same for every integration and every campaign.** The behavior codes
+(`actionKey` of a `UI_ACTION` event) and the sponsor brand codes (`brandCode` of an order) are in the table below, and your adapter can
+read the same list by machine from the **vocabulary door** (`POST /integrations/vocabulary`, signed like the event door; see *Reading it by machine*
+after the table). The table is generated from the same constant the door returns, so the two cannot disagree.
+
+The list says what a code **means**. It does not say which codes a campaign is waiting for: a campaign counts only the behaviors it was
+configured for, which you read on its campaign screen in the console or ask your onboarding contact. And the list **blocks nothing**: an event
+whose code is not in it is still accepted (`200`) and compared as a raw string, exactly as before.
+
+<!-- canonical-vocabulary:start (generated from the platform constant; do not edit by hand) -->
+
+| Code | Used as | Meaning |
+|---|---|---|
+| `brand` | `actionKey` of a `UI_ACTION` event | The user taps a brand |
+| `LAZADA` | `brandCode` of an order | Sponsor brand: the Lazada marketplace |
+| `SHOPEE` | `brandCode` of an order | Sponsor brand: the Shopee marketplace |
+
+<!-- canonical-vocabulary:end -->
+
+**Reading it by machine.** `POST` an empty object `{}` signed exactly like an event, with your **EVENT** key
+([§3](#3-authentication)):
+
+```bash
+BODY='{}'
+TS=$(date +%s)
+SIG="sha256=$(printf '%s.%s' "$TS" "$BODY" | openssl dgst -sha256 -hmac "$EVENT_KEY" -r | cut -d' ' -f1)"
+curl -sS -X POST "https://<your host>/api/v1/integrations/vocabulary" \
+  -H "Content-Type: application/json" -H "X-API-Key: $ACCESS_KEY" \
+  -H "X-Timestamp: $TS" -H "X-Signature: $SIG" -d "$BODY"
+```
+
+The answer is `200` with `{ "items": [ { "code": "…", "kind": "UI_ACTION" | "BRAND", "description": { "vi": "…", "en": "…" } }, … ] }`,
+sorted by `kind` then `code`, the same for every partner. A wrong key, a wrong signature or an old timestamp answers the same `401` as the event
+door; the body must be exactly `{}` (any other field ⇒ `400`). The door is read-only and exists on every cluster. Read it when your adapter
+starts or is updated, not on every event.
 
 ⚠️ **Case-sensitive, compared as a raw string.** Get the
 case wrong and the event is **still accepted and still returns `200`**, but the entitlement tied to that

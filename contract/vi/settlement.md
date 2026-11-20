@@ -365,7 +365,7 @@ tự này**:
 |---|---|---|
 | 1 | Mã đợt | mã đợt — `settlementRef` |
 | 2 | Mã dòng | mã dòng — `settlementItemId`; **chép vào sự kiện `POINT_REDEEMED` của bạn** |
-| 3 | Mã người chơi | mã nội bộ của chúng tôi — `partyId` |
+| 3 | Mã nội bộ hệ thống (để rà soát) | mã nội bộ của chúng tôi — `partyId`; chỉ để chúng tôi rà soát, bạn không cần dùng |
 | 4 | Mã người chơi (đối tác) | mã **của bạn** cho người dùng — `externalUserId`; **để trống** khi chúng tôi không đọc được chính xác (trạng thái dòng nói vì sao) |
 | 5 | Mệnh giá điểm | mệnh giá điểm |
 | 6 | Số điểm | số điểm |

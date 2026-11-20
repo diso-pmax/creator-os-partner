@@ -85,6 +85,8 @@ Full context: [event-ingestion.md](./event-ingestion.md).
 | `401` | bad key, bad signature, or expired timestamp — one message covers all three | ✗ |
 | `404` | route does not exist | ✗ |
 | `422` | correct shape, wrong business meaning — see business codes below | MAY be present (in `details`) |
+| `500` | `secret_store_unavailable` — our secret store is briefly not responding, so we could not verify your signature. Retry with backoff, honouring the `Retry-After` header | ✅ (the body carries `code`, not `deliveryId`) |
+| `503` | `secret_store_misconfigured` — a configuration problem on our side keeps us from verifying your signature. It is not caused by your request: contact us, and do not retry automatically | ✅ (the body carries `code`, not `deliveryId`) |
 | `429` | rate limited | — |
 
 ### Batch delivery codes — `POST /api/v1/integrations/events/batch`
@@ -108,6 +110,7 @@ each element of an accepted batch is answered on its own, and the per-element `c
 | `type: STREAK_REACHED` | `derived_event_not_accepted` | stop sending it — we derive this ourselves |
 | a valid `type` not yet registered for your key | `event_type_not_registered` | contact us — this is a configuration gap on our side, your payload is correct |
 | an `eventId` already used for a **different** `type` | `event_id_conflict` | mint a new id for this attempt |
+| a valid `type` that is outside the plan of the unit your key belongs to (reward types, `POINT_REDEEMED` included, need loyalty; `LINK_ORDER_*` need commerce) | `feature_not_in_plan` | contact us to enable the plan for your unit — your payload is correct; do not retry unchanged (a receipt is recorded) |
 | `type: UI_ACTION` with `payload` missing `actionKey` | `payload_field_missing` | add `actionKey` — the error names the missing field |
 | an order type with `payload` missing `orderId`, or carrying `amountMinor` without `currency` | `payload_field_missing` | add the field the error names |
 | an order type whose `payload` carries a `brandCode` that is **present but empty, blank, or not a string** | `payload_field_missing` | send a usable string *(not empty, not blank)*, or omit `brandCode` entirely — a merely mismatched value returns `200`, not this |
@@ -140,6 +143,8 @@ channel — see [README.md § Required order](./README.md#-required-order-launch
 | `200` | Launch Grant created | — (returns `launchUrl`/`expiresAt`, not a `code` field) |
 | `400` | `validation_error` — malformed body (including a malformed `segments`: one wrong element refuses the whole call, no ticket); uses the plural `errors` field, shape shown above | ✅ |
 | `401` | bad key, bad signature, or expired timestamp — same shape as every other channel's `401` (no `code` field) | ✗ |
+| `500` | `secret_store_unavailable` — our secret store is briefly not responding, so we could not verify your signature. Retry with backoff, honouring the `Retry-After` header | ✅ |
+| `503` | `secret_store_misconfigured` — a configuration problem on our side keeps us from verifying your signature. Contact us; do not retry automatically | ✅ |
 | `404` | `CAMPAIGN_NOT_FOUND` — campaign does not exist, **or** belongs to a different tenant than your integration (intentionally indistinguishable, same reasoning as every other cross-tenant case in this integration) | ✅ |
 | `422` | `CAMPAIGN_NOT_LAUNCHABLE` — campaign exists and is yours, but is not currently `active` / outside its display window | ✅ |
 
@@ -149,7 +154,7 @@ channel — see [README.md § Required order](./README.md#-required-order-launch
 |:--:|---|:--:|
 | `200` | consumed successfully, session established, `302` redirect to the campaign | — |
 | `401` | `INVALID_LAUNCH_CODE` — code does not exist, has expired, or was already consumed; **one code covers all three causes, deliberately** (see [campaign-launch.md §8](./campaign-launch.md#8-error-codes)) | ✅ |
-| `403` | `feature_disabled` — the campaign pays a reward, but the loyalty feature is not switched on for your tenant. The body is raw JSON, there is no page: your app shows its own screen. Do not retry, contact us | ✅ |
+| `403` | `feature_disabled` — the loyalty feature is not switched on for your tenant (for ANY campaign, a reward one or not: the launch always ends in the loyalty app). The body is raw JSON, there is no page: your app shows its own screen. Do not retry, contact us | ✅ |
 
 ⚠️ **Do not try to distinguish "expired" from "already used" from "never existed" on this response.**
 Splitting it into separate statuses would let a prober learn which guess was closer to a real code —
@@ -164,6 +169,7 @@ Full context: [recovery.md](./recovery.md).
 | `200` + `windows: []` | the source **does not belong to you**, **or** does not exist — intentionally indistinguishable |
 | `400` | `to` is not after `from`, or the range exceeds 30 days in one call |
 | `401` | key, signature, or freshness — same message as the EVENT channel |
+| `500` / `503` | `secret_store_unavailable` (retry with backoff, honouring `Retry-After`) / `secret_store_misconfigured` (contact us) — same meaning as on the EVENT channel |
 
 For the **reverse** direction (we call you): you choose your own HTTP shape, but your three possible
 answers (cannot-answer / empty / list-with-cursor) must map to `401`/`403` (refusing us), a genuine
@@ -201,6 +207,11 @@ recipient exactly. You see no request; these codes explain why none arrived:
 - A `401` on **any** channel means the same three possible causes: bad key, bad signature, or clock
   drift beyond the freshness window. It never means "this specific business rule failed" — that is
   always a `4xx` other than `401` (`403`, `409`, `422`) with a distinguishing code.
+- On the EVENT, LAUNCH and RECOVERY channels, a request that fails because of OUR secret store is never
+  answered with `401`. `500` + `secret_store_unavailable` + `Retry-After` means a short hiccup on our
+  side: resend with backoff. `503` + `secret_store_misconfigured` means a configuration problem on our
+  side: contact us, and do not resend automatically. The meaning of the `503` and `5xx` rows in the
+  table above is unchanged. Neither body says which key or which part is affected.
 - `deliveryId` (EVENT channel) and `launchCode` (LAUNCH channel) are unrelated concepts that happen to
   both be opaque tokens — do not conflate them. See each channel's terminology section.
 

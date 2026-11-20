@@ -1,0 +1,58 @@
+{
+  "type": "object",
+  "properties": {
+    "items": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9_-]{1,64}$"
+          },
+          "kind": {
+            "type": "string",
+            "enum": [
+              "UI_ACTION",
+              "BRAND"
+            ]
+          },
+          "description": {
+            "type": "object",
+            "properties": {
+              "vi": {
+                "type": "string",
+                "minLength": 1
+              },
+              "en": {
+                "type": "string",
+                "minLength": 1
+              }
+            },
+            "required": [
+              "vi",
+              "en"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "code",
+          "kind",
+          "description"
+        ],
+        "additionalProperties": false
+      }
+    }
+  },
+  "required": [
+    "items"
+  ],
+  "additionalProperties": false,
+  "title": "Vocabulary",
+  "description": "What POST /integrations/vocabulary answers: the canonical vocabulary the platform publishes (behavior codes and sponsor brand codes), the same list for every partner.",
+  "x-serverSideChecks": [
+    "a code that is not listed is still accepted by the event door: the vocabulary guides your adapter, it blocks nothing",
+    "codes are case-sensitive and compared as raw strings; no two listed codes differ only by case"
+  ]
+}

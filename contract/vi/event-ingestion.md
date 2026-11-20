@@ -309,7 +309,7 @@ Hai điều nữa về thời điểm:
 đặt tại một danh sách brand tài trợ cố định *(ví dụ quyền lợi cho đơn đầu tại một brand tài trợ, hoặc cho
 đơn tại nhiều brand tài trợ khác nhau)*. Đơn **được tính** cho quyền lợi đó **khi và chỉ khi** `brandCode`
 của nó **khớp CHÍNH XÁC** một trong các mã brand mà chiến dịch đã khai. **Bên chúng tôi định nghĩa các mã
-brand** *(ví dụ `SHOPEE`, `LAZADA`)*; bạn gửi đúng chuỗi đó — cùng luật với `actionKey` bên dưới.
+brand** *(ví dụ `SHOPEE`, `LAZADA`; danh sách đầy đủ ở bảng phía dưới trong mục này)*; bạn gửi đúng chuỗi đó — cùng luật với `actionKey` bên dưới.
 
 ⚠️ **Phân biệt hoa/thường, so chuỗi THÔ.** `SHOPEE` ≠ `Shopee` ≠ `shopee`. Sai hoa/thường — hoặc thiếu
 `brandCode` — thì đơn **vẫn được nhận và vẫn trả `200`**, nhưng **KHÔNG bao giờ được tính** cho bất kỳ
@@ -336,7 +336,7 @@ suốt `ORDER_CREATED` → `ORDER_COMPLETED` → `ORDER_CANCELLED`, mỗi nhịp
 `UI_ACTION` — **`actionKey` là BẮT BUỘC**:
 
 ```jsonc
-{ "actionKey": "<canonical-action-key-assigned-to-you>" }
+{ "actionKey": "<một mã hành vi trong từ vựng đã công bố>" }
 ```
 
 `POINT_REDEEMED` — **bạn đã trả tiền, báo về** *(mở 2026-09-03)*:
@@ -395,10 +395,40 @@ không ai biết bạn vừa báo hành vi nào. `actionKey` là **định danh 
 nghĩa** — bạn ánh xạ biểu diễn nội bộ của mình sang đúng chuỗi đó ở biên của bạn, không tự đặt rồi báo
 lại cho chúng tôi.
 
-Chúng tôi không công bố một danh sách cố định toàn cục ở đây — chuỗi cụ thể phụ thuộc tích hợp của bạn
-đang cấu hình cho hành vi nào, và tập đó đổi mỗi khi một chiến dịch được cấu hình. Đọc tập mã hiện tại
-cho chính chiến dịch của bạn ở màn chiến dịch trên console, hoặc hỏi đầu mối onboarding. Đừng chép lại một `actionKey`
-thấy ở một tích hợp hay một chiến dịch khác — nó có thể không còn là giá trị chiến dịch đó đang chờ.
+**Nền tảng công bố các mã mà nó gọi tên: một danh sách, giống nhau cho mọi tích hợp và mọi chiến dịch.** Mã hành vi
+(`actionKey` của sự kiện `UI_ACTION`) và mã thương hiệu tài trợ (`brandCode` của đơn hàng) nằm ở bảng dưới, và adapter của bạn đọc được đúng danh sách đó
+bằng máy qua **cửa từ vựng** (`POST /integrations/vocabulary`, ký như cửa sự kiện; xem *Đọc bằng máy* ngay sau bảng).
+Bảng được sinh từ chính hằng mà cửa trả về, nên hai nơi không thể lệch nhau.
+
+Danh sách nói một mã **có nghĩa gì**. Nó không nói một chiến dịch đang chờ những mã nào: chiến dịch chỉ tính các hành vi nó đã được cấu hình,
+bạn đọc ở màn chiến dịch trên console hoặc hỏi đầu mối onboarding. Và danh sách **không chặn gì**: sự kiện mang mã không có trong đó vẫn được
+nhận (`200`) và vẫn so chuỗi thô, đúng như trước.
+
+<!-- canonical-vocabulary:start (generated from the platform constant; do not edit by hand) -->
+
+| Mã | Dùng làm | Ý nghĩa |
+|---|---|---|
+| `brand` | `actionKey` của sự kiện `UI_ACTION` | Người dùng bấm vào một thương hiệu |
+| `LAZADA` | `brandCode` của đơn hàng | Thương hiệu tài trợ: sàn Lazada |
+| `SHOPEE` | `brandCode` của đơn hàng | Thương hiệu tài trợ: sàn Shopee |
+
+<!-- canonical-vocabulary:end -->
+
+**Đọc bằng máy.** `POST` một đối tượng rỗng `{}` được ký đúng như một sự kiện, bằng khoá **EVENT** của bạn
+([§3](#3-xác-thực)):
+
+```bash
+BODY='{}'
+TS=$(date +%s)
+SIG="sha256=$(printf '%s.%s' "$TS" "$BODY" | openssl dgst -sha256 -hmac "$EVENT_KEY" -r | cut -d' ' -f1)"
+curl -sS -X POST "https://<host của bạn>/api/v1/integrations/vocabulary" \
+  -H "Content-Type: application/json" -H "X-API-Key: $ACCESS_KEY" \
+  -H "X-Timestamp: $TS" -H "X-Signature: $SIG" -d "$BODY"
+```
+
+Câu trả lời là `200` với `{ "items": [ { "code": "…", "kind": "UI_ACTION" | "BRAND", "description": { "vi": "…", "en": "…" } }, … ] }`,
+xếp theo `kind` rồi `code`, giống nhau cho mọi đối tác. Sai khoá, sai chữ ký hay timestamp quá cũ trả cùng câu `401` như cửa sự kiện;
+thân phải đúng là `{}` (thêm trường nào khác ⇒ `400`). Cửa chỉ đọc và có ở mọi cụm. Đọc khi adapter khởi động hoặc được cập nhật, không đọc mỗi sự kiện.
 
 ⚠️ **Phân biệt hoa/thường, so chuỗi thô.** Sai hoa
 thường thì sự kiện **vẫn được nhận, vẫn trả `200`**, nhưng quyền lợi gắn với hành vi đó **không bao giờ

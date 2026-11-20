@@ -87,6 +87,8 @@ Ngữ cảnh đầy đủ: [event-ingestion.md](./event-ingestion.md).
 | `401` | sai khoá, sai chữ ký, hoặc timestamp hết hạn — một thông báo chung cho cả ba | ✗ |
 | `404` | route không tồn tại | ✗ |
 | `422` | đúng khuôn, sai nghĩa nghiệp vụ — xem các mã nghiệp vụ dưới đây | CÓ THỂ có mặt (trong `details`) |
+| `500` | `secret_store_unavailable` — kho bí mật của chúng tôi tạm thời không phản hồi nên chúng tôi chưa kiểm được chữ ký của bạn. Gửi lại có backoff, theo header `Retry-After` | ✅ (thân có `code`, không có `deliveryId`) |
+| `503` | `secret_store_misconfigured` — lỗi cấu hình phía chúng tôi khiến chúng tôi không kiểm được chữ ký của bạn. Không do request của bạn: báo chúng tôi, và đừng tự động gửi lại | ✅ (thân có `code`, không có `deliveryId`) |
 | `429` | vượt giới hạn tần suất | — |
 
 ### Mã của gửi theo lô — `POST /api/v1/integrations/events/batch`
@@ -110,6 +112,7 @@ mỗi phần tử của một lô đã nhận được trả lời riêng, và `
 | `type: STREAK_REACHED` | `derived_event_not_accepted` | thôi gửi — chúng tôi tự suy ra |
 | một `type` hợp lệ nhưng chưa đăng ký cho khoá của bạn | `event_type_not_registered` | báo chúng tôi — đây là lỗ cấu hình phía chúng tôi, payload của bạn đúng |
 | một `eventId` đã dùng cho `type` **khác** | `event_id_conflict` | sinh id mới cho lượt này |
+| một `type` hợp lệ nhưng nằm ngoài gói của đơn vị mà khoá của bạn thuộc về (loại thưởng, kể cả `POINT_REDEEMED`, cần loyalty; `LINK_ORDER_*` cần commerce) | `feature_not_in_plan` | báo chúng tôi bật gói cho đơn vị của bạn — payload của bạn đúng; đừng thử lại y nguyên (có biên nhận) |
 | `type: UI_ACTION` mà `payload` thiếu `actionKey` | `payload_field_missing` | bổ sung `actionKey` — lỗi nêu tên trường còn thiếu |
 | một loại đơn hàng mà `payload` thiếu `orderId`, hoặc có `amountMinor` mà thiếu `currency` | `payload_field_missing` | bổ sung trường lỗi nêu tên |
 | một loại đơn hàng mà `payload` mang `brandCode` **có mặt nhưng rỗng, toàn khoảng trắng, hay không phải chuỗi** | `payload_field_missing` | gửi một chuỗi dùng được *(không rỗng, không toàn khoảng trắng)*, hoặc bỏ hẳn `brandCode` — giá trị chỉ sai-khớp thì trả `200`, không phải lỗi này |
@@ -142,6 +145,8 @@ hành** — xem [README.md § Thứ tự bắt buộc](./README.md#-thứ-tự-b
 | `200` | Launch Grant đã tạo | — (trả `launchUrl`/`expiresAt`, không có trường `code`) |
 | `400` | `validation_error` — thân sai khuôn (kể cả `segments` sai khuôn: một phần tử sai ⇒ từ chối cả lời gọi, chưa có vé); dùng trường `errors` số nhiều, xem hình dạng ở trên | ✅ |
 | `401` | sai key, sai chữ ký, hoặc timestamp hết hạn — cùng hình dạng với `401` của mọi kênh khác (không có trường `code`) | ✗ |
+| `500` | `secret_store_unavailable` — kho bí mật của chúng tôi tạm thời không phản hồi nên chúng tôi chưa kiểm được chữ ký của bạn. Gửi lại có backoff, theo header `Retry-After` | ✅ |
+| `503` | `secret_store_misconfigured` — lỗi cấu hình phía chúng tôi khiến chúng tôi không kiểm được chữ ký của bạn. Báo chúng tôi; đừng tự động gửi lại | ✅ |
 | `404` | `CAMPAIGN_NOT_FOUND` — campaign không tồn tại, **hoặc** thuộc tenant khác với tích hợp của bạn (cố ý không phân biệt, cùng lý lẽ với mọi ca cross-tenant khác trong tích hợp này) | ✅ |
 | `422` | `CAMPAIGN_NOT_LAUNCHABLE` — campaign tồn tại và là của bạn, nhưng hiện không `active` / ngoài cửa sổ hiển thị | ✅ |
 
@@ -151,7 +156,7 @@ hành** — xem [README.md § Thứ tự bắt buộc](./README.md#-thứ-tự-b
 |:--:|---|:--:|
 | `200` | tiêu thụ thành công, session đã establish, `302` redirect tới campaign | — |
 | `401` | `INVALID_LAUNCH_CODE` — code không tồn tại, đã hết hạn, hoặc đã bị tiêu thụ; **một mã phủ cả ba nguyên nhân, cố ý** (xem [campaign-launch.md §8](./campaign-launch.md#8-mã-lỗi)) | ✅ |
-| `403` | `feature_disabled` — chiến dịch có thưởng nhưng tính năng loyalty chưa bật cho đơn vị của bạn. Thân là JSON thô, không có trang: app của bạn tự dựng màn. Đừng thử lại, hãy liên hệ chúng tôi | ✅ |
+| `403` | `feature_disabled` — tính năng loyalty chưa bật cho đơn vị của bạn (với MỌI chiến dịch, có thưởng hay không: launch luôn kết thúc ở app loyalty). Thân là JSON thô, không có trang: app của bạn tự dựng màn. Đừng thử lại, hãy liên hệ chúng tôi | ✅ |
 
 ⚠️ **Đừng cố phân biệt "hết hạn" với "đã dùng" với "chưa từng tồn tại" trên response này.** Tách thành
 các status riêng sẽ cho phép kẻ dò biết được lượt đoán nào gần đúng hơn — xem
@@ -166,6 +171,7 @@ Ngữ cảnh đầy đủ: [recovery.md](./recovery.md).
 | `200` + `windows: []` | nguồn **không thuộc về bạn**, **hoặc** không tồn tại — cố ý không phân biệt được |
 | `400` | `to` không sau `from`, hoặc khoảng vượt quá 30 ngày một lượt |
 | `401` | khoá, chữ ký, hoặc độ tươi — cùng thông báo như kênh EVENT |
+| `500` / `503` | `secret_store_unavailable` (gửi lại có backoff, theo `Retry-After`) / `secret_store_misconfigured` (báo chúng tôi) — cùng nghĩa như kênh EVENT |
 
 Cho chiều **ngược lại** (chúng tôi gọi bạn): bạn tự chọn hình dạng HTTP của mình, nhưng ba câu trả lời
 có thể có (không trả lời được / rỗng / danh sách kèm con trỏ) phải ánh xạ tương ứng thành
@@ -204,6 +210,11 @@ tên chính xác được người nhận. Bạn không thấy request nào; cá
 - Một `401` ở **bất kỳ** kênh nào đều có nghĩa là một trong ba nguyên nhân giống nhau: sai khoá, sai
   chữ ký, hoặc đồng hồ lệch quá cửa sổ độ tươi. Nó không bao giờ có nghĩa "quy tắc nghiệp vụ cụ thể
   này thất bại" — điều đó luôn là một `4xx` khác `401` (`403`, `409`, `422`) kèm mã phân biệt.
+- Ở các kênh EVENT, LAUNCH và RECOVERY, một request lỗi vì kho bí mật CỦA CHÚNG TÔI không bao giờ bị trả `401`.
+  `500` + `secret_store_unavailable` + `Retry-After` nghĩa là chập chờn ngắn phía chúng tôi: gửi lại có
+  backoff. `503` + `secret_store_misconfigured` nghĩa là lỗi cấu hình phía chúng tôi: báo chúng tôi và
+  đừng tự động gửi lại. Nghĩa của các dòng `503` và `5xx` trong bảng trên không đổi. Thân trả lời không
+  nói khoá nào hay phần nào bị ảnh hưởng.
 - `deliveryId` (kênh EVENT) và `launchCode` (kênh LAUNCH) là hai khái niệm không liên quan dù đều là
   token mờ — đừng gộp chung chúng. Xem mục thuật ngữ của từng kênh.
 

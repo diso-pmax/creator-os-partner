@@ -39,7 +39,6 @@ pg_dump --format=custom --file=creatoros-truoc-<ban-moi>.dump "postgresql://<own
 ```
 
 ⚠️ Bỏ đuôi `?schema=creator_os` khi đưa chuỗi kết nối cho `pg_dump` — công cụ này không nhận tham số đó.
-Ghi lại kết quả `objects_not_owned_by_migrate_role` của mục 4e bước 1 ở lúc sao lưu: mục 7 so bản khôi phục với số này.
 Giữ file sao lưu ở nơi tách khỏi máy chủ.
 
 Khi nâng nhiều bản một lúc: **dừng ứng dụng trước, rồi mới sao lưu, rồi mới chạy migration (mục 4)** — sao
@@ -124,128 +123,40 @@ Chạm trần là **lỗi báo rõ**, không bao giờ cắt lặng lẽ: danh s
 
 ---
 
-## 4d. Kiểm tài khoản chạy migration có quyền bỏ qua bảo mật theo hàng — TRƯỚC khi chạy migration
+## 4d. Thuộc tính của tài khoản chạy migration — lệnh ở mục 4 kiểm và vá, không có câu nào phải gõ tay
 
-Một số migration tạo hàm chạy bằng quyền của người tạo hàm (`SECURITY DEFINER`) và **từ chối chạy** nếu chủ sở hữu hàm không có `BYPASSRLS` (lỗi có chữ `owned by BYPASSRLS role`). Thiếu thuộc tính này, nâng bản dừng giữa chừng, các migration đã chạy không tự hoàn lại, bạn phải khôi phục bản chụp cơ sở dữ liệu. Kiểm trước, chỉ đọc, bằng chính tài khoản chạy migration (mục 4):
+Một số migration tạo hàm chạy bằng quyền của người tạo hàm (`SECURITY DEFINER`) và **từ chối chạy** nếu chủ sở hữu hàm không có `BYPASSRLS` (lỗi có chữ `owned by BYPASSRLS role`). Siêu người dùng chưa gán thuộc tính này cũng làm migration dừng.
 
-```sql
-SELECT rolname, rolbypassrls FROM pg_roles WHERE rolname = current_user;
-```
+Lệnh `db:prepare` ở mục 4 đọc thuộc tính của tài khoản migration **trước** khi chạy migration: có tài khoản quản trị thì tự đặt `BYPASSRLS`; không có thì in đúng câu `ALTER ROLE … BYPASSRLS` cho quản trị viên chạy và **không chạy migration** cho tới khi đúng. Chủ của mọi hàm là chính tài khoản migration (mục 4e kiểm điều này), nên các hàm kiểm soát luôn đọc đủ hàng.
 
-| Kết quả | Việc làm |
-|---|---|
-| `rolbypassrls` là `t` | đi tiếp mục 4 |
-| `rolbypassrls` là `f` | **dừng** (kể cả khi tài khoản là siêu người dùng: các migration chỉ đọc thuộc tính `rolbypassrls`, siêu người dùng chưa gán thuộc tính này vẫn làm migration dừng): quản trị cơ sở dữ liệu (siêu người dùng) chạy `ALTER ROLE <tài khoản chạy migration> BYPASSRLS;`, ghi giờ và người chạy vào nhật ký nâng bản, rồi chạy lại câu trên |
-
-Kiểm thêm các hàm `SECURITY DEFINER` đã có mà chủ sở hữu không bỏ qua bảo mật theo hàng. Kết quả phải là **không dòng nào**:
-
-```sql
-SELECT p.proname, o.rolname AS chu_so_huu
-FROM pg_proc p
-JOIN pg_namespace n ON n.oid = p.pronamespace
-JOIN pg_roles o ON o.oid = p.proowner
-WHERE n.nspname = 'creator_os' AND p.prosecdef AND NOT o.rolbypassrls;
-```
-
-Có dòng thì chủ sở hữu hàm đó đã mất `BYPASSRLS` (ví dụ ai đó thu lại sau lần nâng bản trước): hàm kiểm soát sẽ đọc thiếu hàng. Cấp lại thuộc tính cho chủ sở hữu, hoặc báo Diso.
-
-🔴 **Đừng thu `BYPASSRLS` lại sau khi nâng bản.** Hàm `SECURITY DEFINER` chạy bằng thuộc tính của chủ sở hữu mỗi lần được gọi. Tài khoản chạy migration chỉ dùng cho `migrate deploy`, không bao giờ đặt làm `DATABASE_URL` của ứng dụng lúc chạy.
+🔴 **Đừng thu `BYPASSRLS` lại sau khi nâng bản.** Hàm `SECURITY DEFINER` chạy bằng thuộc tính của chủ sở hữu mỗi lần được gọi. Tài khoản chạy migration chỉ dùng cho `migrate deploy`, không bao giờ đặt làm `DATABASE_URL` của ứng dụng lúc chạy. Lệnh `db:prepare` từ chối chạy nếu ba chuỗi kết nối trùng tài khoản.
 
 ---
 
-## 4e. Kiểm chủ sở hữu cơ sở dữ liệu — TRƯỚC khi chạy migration
+## 4e. Chủ sở hữu cơ sở dữ liệu — lệnh ở mục 4 kiểm trước khi chạy migration
 
-Migration đổi cấu trúc nên **tài khoản chạy migration phải là CHỦ** của thứ nó đổi: kiểu liệt kê (`enum`), bảng, hàm, schema; và phải có quyền tạo extension trên cơ sở dữ liệu. **Ngoại lệ:** tài khoản là siêu người dùng (superuser) vượt kiểm tra sở hữu, nên lẫn chủ không chặn nó; lỗi `must be owner` chỉ xảy ra với tài khoản thường. Cơ sở dữ liệu do một tài khoản khác dựng, ví dụ khôi phục bản sao lưu bằng tài khoản quản trị, thường **lẫn chủ**: bảng thuộc một tài khoản, kiểu và hàm thuộc tài khoản khác. Khi đó migration dừng giữa chừng với `must be owner of type …` (mã `42501`) hoặc `permission denied to create extension …`, và công cụ migration từ chối chạy tiếp (`P3009`). Kiểm trước thì chỉ mất vài giây; bỏ qua thì dừng ở giữa lần nâng bản.
+Thưởng trong Program: hai migration có mốc `20261022042900` và `20261022045900` dùng từng câu `CREATE UNIQUE INDEX CONCURRENTLY`, rồi gắn UNIQUE constraint ở migration kế tiếp. Khi dựng bị hủy, dùng phép kiểm `pg_index.indisvalid` và `pg_constraint` bên dưới, đối chiếu tên chỉ mục trong thông báo lỗi của đúng hai mốc nâng cấp này. Chỉ xóa chỉ mục dở INVALID chưa được gắn constraint sau khi xác minh, rồi làm lại theo quy trình migration hỏng bên dưới; không xóa constraint đang hợp lệ. Chưa có số đo lock trên dữ liệu production.
 
-🔴 **Điều cần đúng:** MỘT chủ duy nhất cho mọi đối tượng, và chủ đó là **chính tài khoản chạy migration** (tài khoản trong `DATABASE_URL_MIGRATE`). Ba extension `citext`, `btree_gist`, `pgcrypto` nằm trong schema `creator_os`: extension nằm ở schema khác (thường `public`) làm migration báo `function digest(…) does not exist`.
+Migration đổi cấu trúc nên **tài khoản chạy migration phải là CHỦ** của thứ nó đổi: kiểu liệt kê (`enum`), bảng, hàm, schema; và phải tạo được extension. Cơ sở dữ liệu do một tài khoản khác dựng, ví dụ khôi phục bản sao lưu bằng tài khoản quản trị, thường **lẫn chủ**: bảng thuộc một tài khoản, kiểu và hàm thuộc tài khoản khác. Migration chạy trên đó sẽ dừng giữa chừng với `must be owner of type …` (mã `42501`) hoặc `permission denied to create extension …`, và công cụ migration từ chối chạy tiếp (`P3009`).
 
-**Bước 1, chỉ đọc.** Lưu đoạn sau thành file `kiem-chu-so-huu.sql`, chạy bằng tài khoản quản trị trên cơ sở dữ liệu **chính** (cần `psql` từ phiên bản 10). Thay `<tài khoản migration>` bằng tên tài khoản trong `DATABASE_URL_MIGRATE`:
+Lệnh `db:prepare` ở mục 4 kiểm điều này **trước** khi chạy migration. Đúng thì in:
 
-```sql
-\set ON_ERROR_STOP on
-\if :{?migrate_role}
-\else
-  DO $$BEGIN RAISE EXCEPTION 'Thieu -v migrate_role=<tai khoan chay migration>'; END$$;
-\endif
-SELECT rolname, rolsuper, rolbypassrls, rolcanlogin FROM pg_roles WHERE rolname !~ '^pg_' ORDER BY rolname;
-SELECT current_database() AS database, pg_get_userbyid(datdba) AS database_owner, :'migrate_role' AS migrate_role,
-       (SELECT rolsuper FROM pg_roles WHERE rolname = :'migrate_role') AS migrate_is_superuser,
-       has_database_privilege(:'migrate_role', current_database(), 'CREATE') AS migrate_can_create
-  FROM pg_database WHERE datname = current_database();
-SELECT usename AS connected_as, application_name, count(*) AS sessions
-  FROM pg_stat_activity WHERE datname = current_database() AND usename IS NOT NULL GROUP BY 1, 2 ORDER BY 3 DESC;
-SELECT extname, pg_get_userbyid(extowner) AS extension_owner, extnamespace::regnamespace AS in_schema FROM pg_extension ORDER BY 1;
-CREATE TEMP VIEW owners AS
-  SELECT 'database' AS kind, pg_get_userbyid(datdba) AS owner FROM pg_database WHERE datname = current_database()
-  UNION ALL SELECT 'schema', pg_get_userbyid(nspowner) FROM pg_namespace WHERE nspname = 'creator_os'
-  UNION ALL SELECT 'enum', pg_get_userbyid(t.typowner) FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace
-    WHERE n.nspname = 'creator_os' AND t.typtype = 'e' AND NOT EXISTS (SELECT 1 FROM pg_depend d WHERE d.objid = t.oid AND d.deptype = 'e')
-  UNION ALL SELECT 'table', pg_get_userbyid(c.relowner) FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
-    WHERE n.nspname = 'creator_os' AND c.relkind IN ('r', 'p', 'S', 'v', 'm') AND NOT EXISTS (SELECT 1 FROM pg_depend d WHERE d.objid = c.oid AND d.deptype IN ('e', 'a'))
-  UNION ALL SELECT 'function', pg_get_userbyid(p.proowner) FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
-    WHERE n.nspname = 'creator_os' AND p.prokind IN ('f', 'p') AND NOT EXISTS (SELECT 1 FROM pg_depend d WHERE d.objid = p.oid AND d.deptype = 'e');
-SELECT kind, owner, count(*) AS n FROM owners GROUP BY 1, 2 ORDER BY 1, 2;
-SELECT count(*) AS objects_not_owned_by_migrate_role, count(DISTINCT owner) AS distinct_owners FROM owners WHERE owner <> :'migrate_role';
-SELECT count(*) AS extensions_outside_creator_os FROM pg_extension
-  WHERE extname IN ('citext', 'btree_gist', 'pgcrypto') AND extnamespace::regnamespace::text <> 'creator_os';
+```
+ownership: every object of creator_os belongs to the migration account "creator_os_migrate".
 ```
 
-```bash
-psql "<kết nối tài khoản quản trị>" -X -q -v migrate_role=<tài khoản migration> -f kiem-chu-so-huu.sql
-```
+Lẫn chủ thì nó **không chạy migration**, in số đối tượng theo loại và theo chủ, và in sẵn các câu `ALTER … OWNER TO` cần chạy (nó không tự đổi chủ vì mỗi câu khoá đối tượng). Cách làm: sao lưu (mục 2), dừng ứng dụng và tác vụ nền, chạy các câu được in ra bằng tài khoản quản trị, rồi chạy lại lệnh ở mục 4. Quyền của `creator_os_app` và `creator_os_worker` trên bảng và hàm **không đổi** khi đổi chủ. Đừng dùng `REASSIGN OWNED BY`: lệnh đó chuyển mọi đối tượng của tài khoản cũ trong cả cơ sở dữ liệu, kể cả schema khác.
 
-| Kết quả | Nghĩa |
-|---|---|
-| `objects_not_owned_by_migrate_role` = `0`, `migrate_can_create` = `t`, `extensions_outside_creator_os` = `0` | **đúng**, đi tiếp mục 4 |
-| `objects_not_owned_by_migrate_role` lớn hơn `0` và `migrate_is_superuser` = `f` | lẫn chủ và tài khoản migration là tài khoản thường: bảng `kind, owner, n` cho biết loại đối tượng nào do ai sở hữu. Làm bước 2 |
-| `objects_not_owned_by_migrate_role` lớn hơn `0` và `migrate_is_superuser` = `t` | lẫn chủ **không chặn** siêu người dùng: bước 2 là tuỳ chọn (chỉ làm nếu muốn gom về một chủ cho gọn). Vẫn xử lý dòng `extensions_outside_creator_os` nếu lớn hơn `0` |
-| `migrate_can_create` = `f` và extension `pgcrypto` chưa có | tài khoản migration không tạo được extension: bước 2 (đổi chủ cơ sở dữ liệu) |
-| `extensions_outside_creator_os` lớn hơn `0` | `ALTER EXTENSION <tên> SET SCHEMA creator_os;` (cột `in_schema` cho biết extension nào), rồi chạy lại bước 1 |
+Ba extension `citext`, `btree_gist`, `pgcrypto` phải nằm trong schema `creator_os`. Nằm ở schema khác (thường `public`) thì migration báo `function digest(…) does not exist`; lệnh `db:prepare` báo `REPORT ONLY: the extension … is in the schema …` kèm câu `ALTER EXTENSION … SET SCHEMA creator_os` để chạy lúc ứng dụng đã dừng.
 
-Dòng `connected_as` cho biết ứng dụng và tác vụ nền đang kết nối bằng tài khoản nào: kỳ vọng `creator_os_app` và `creator_os_worker`, **không** phải tài khoản chủ sở hữu (tài khoản chủ vượt quy tắc lọc theo đơn vị). Câu này chỉ có nghĩa **khi ứng dụng đang chạy**: chạy nó TRƯỚC khi dừng ứng dụng (mục 2). Ứng dụng đã dừng thì không còn phiên nào, kết quả rỗng là bình thường, không phải "đúng".
-
-**Bước 2, chỉ khi bước 1 báo lẫn chủ.** Sao lưu cơ sở dữ liệu trước (mục 2). Chạy lúc vắng và **tạm dừng tác vụ nền** (nó giữ giao dịch lâu nhất). Lưu đoạn sau thành file `doi-chu-so-huu.sql`: nó chỉ đổi chủ, không đổi dữ liệu, chỉ đụng schema `creator_os` và cơ sở dữ liệu, chạy lại được, và hoàn tác toàn bộ nếu sau 15 giây không lấy được khoá:
-
-```sql
-\set ON_ERROR_STOP on
-BEGIN;
--- Moi ALTER lay khoa ACCESS EXCLUSIVE tren doi tuong cho toi COMMIT: sau 15 giay khong lay duoc khoa thi huy ca khoi (khong doi gi), de khong xep hang chan ung dung.
-SET LOCAL lock_timeout = '15s';
-SELECT format('ALTER DATABASE %I OWNER TO %I', current_database(), :'migrate_role')
- WHERE pg_get_userbyid((SELECT datdba FROM pg_database WHERE datname = current_database())) <> :'migrate_role' \gexec
-SELECT format('ALTER SCHEMA creator_os OWNER TO %I', :'migrate_role')
- WHERE pg_get_userbyid((SELECT nspowner FROM pg_namespace WHERE nspname = 'creator_os')) <> :'migrate_role' \gexec
-SELECT format('ALTER TYPE %I.%I OWNER TO %I', n.nspname, t.typname, :'migrate_role')
-  FROM pg_type t JOIN pg_namespace n ON n.oid = t.typnamespace
- WHERE n.nspname = 'creator_os' AND t.typtype = 'e' AND pg_get_userbyid(t.typowner) <> :'migrate_role'
-   AND NOT EXISTS (SELECT 1 FROM pg_depend d WHERE d.objid = t.oid AND d.deptype = 'e') \gexec
-SELECT format('ALTER %s %I.%I OWNER TO %I',
-              CASE c.relkind WHEN 'S' THEN 'SEQUENCE' WHEN 'v' THEN 'VIEW' WHEN 'm' THEN 'MATERIALIZED VIEW' ELSE 'TABLE' END,
-              n.nspname, c.relname, :'migrate_role')
-  FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace
- WHERE n.nspname = 'creator_os' AND c.relkind IN ('r', 'p', 'S', 'v', 'm') AND pg_get_userbyid(c.relowner) <> :'migrate_role'
-   AND NOT EXISTS (SELECT 1 FROM pg_depend d WHERE d.objid = c.oid AND d.deptype IN ('e', 'a')) \gexec
-SELECT format('ALTER FUNCTION %I.%I(%s) OWNER TO %I', n.nspname, p.proname, pg_get_function_identity_arguments(p.oid), :'migrate_role')
-  FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace
- WHERE n.nspname = 'creator_os' AND p.prokind IN ('f', 'p') AND pg_get_userbyid(p.proowner) <> :'migrate_role'
-   AND NOT EXISTS (SELECT 1 FROM pg_depend d WHERE d.objid = p.oid AND d.deptype = 'e') \gexec
-COMMIT;
-```
-
-```bash
-psql "<kết nối tài khoản quản trị>" -X -v ON_ERROR_STOP=1 -v migrate_role=<tài khoản migration> -f doi-chu-so-huu.sql
-```
-
-Chạy lại bước 1: mọi dòng phải đúng. Quyền của `creator_os_app` và `creator_os_worker` trên bảng và hàm **không đổi** khi đổi chủ. Đừng dùng `REASSIGN OWNED BY`: lệnh đó chuyển mọi đối tượng của tài khoản cũ trong cả cơ sở dữ liệu, kể cả schema khác.
-
-**Nếu migration đã dừng** (lỗi `P3009: migrate found failed migrations`): sau khi bước 2 xong, đánh dấu migration hỏng là đã lùi rồi chạy lại. Tên migration hỏng nằm trong thông báo lỗi:
+**Nếu migration đã dừng** (lỗi `P3009: migrate found failed migrations`): sau khi chủ sở hữu đã đúng (lệnh `db:prepare` in dòng `ownership: every object …`), đánh dấu migration hỏng là đã lùi rồi chạy lại. Tên migration hỏng nằm trong thông báo lỗi:
 
 ```bash
 docker run --rm --env-file .env --entrypoint sh <kho ảnh Diso cấp>/creator-os/app:vX.Y.Z \
   -c 'cd /repo && DATABASE_URL="$DATABASE_URL_MIGRATE" pnpm --filter @app/db exec prisma migrate resolve --rolled-back <tên migration hỏng>'
 ```
 
-rồi chạy lại lệnh ở mục 4. Sau lần nâng bản đầy đủ, mỗi tài khoản `creator_os_app` và `creator_os_worker` thiếu quyền đọc đúng **một** bảng (bảng nhận gói tin từ sàn, cố ý thu quyền), xem câu ② ở [hướng dẫn cài](reward-only-setup.md).
+rồi chạy lại lệnh ở mục 4.
 
 ---
 
@@ -309,51 +220,56 @@ psql "${DATABASE_URL_MIGRATE%%\?*}" -X -q -f kiem-chu-khong-doc-duoc.sql
 Cùng thứ tự Diso dùng cho bản cài của chính mình: cấu trúc cơ sở dữ liệu đi trước, ứng dụng đi sau.
 Migration hỏng ở bước này thì container cũ vẫn đang chạy — chưa có gì bị gián đoạn.
 
-🔴 **Ba điều phải đúng TRƯỚC khi chạy** — chi tiết ở mục 2 của [hướng dẫn cài](reward-only-setup.md):
+Một lệnh làm cả hai việc, theo thứ tự: kiểm và vá tài khoản, quyền, chủ sở hữu; **rồi** chạy migration bằng tài khoản chủ sở hữu (không bao giờ bằng tài khoản quản trị); rồi đối chiếu quyền. Nó dừng **trước** migration nếu có gì chưa đúng, để cơ sở dữ liệu không bị bỏ dở nửa chừng. Chi tiết cách đọc kết quả: mục 3 của [hướng dẫn cài](reward-only-setup.md).
 
-- Tài khoản ứng dụng và tác vụ nền mang **đúng tên** `creator_os_app` và `creator_os_worker`. Migration chỉ
-  cấp quyền bảng cho đúng hai tên này. Chạy khi còn tên khác thì migration vẫn báo xong, còn ứng dụng
-  thiếu quyền — và đổi tên sau đó **không** làm migration chạy lại.
-- Chạy bằng **cùng** tài khoản chủ sở hữu như các lần trước. Bảng mới chỉ tự có quyền khi do đúng tài
-  khoản đó tạo.
-- Mọi bảng trong schema thuộc tài khoản chủ sở hữu: câu kiểm ① ở mục 2 của hướng dẫn cài ra **đúng một
-  dòng**. Có bảng thuộc tài khoản khác, ví dụ do khôi phục bản sao lưu bằng tài khoản khác, thì migration
-  dừng với lỗi `permission denied for table …`.
+**Ứng dụng và tác vụ nền đang chạy hay đã dừng?** Lệnh đặt quyền mặc định cho bảng tương lai **trước** khi chạy migration, rồi mới đối chiếu và thu quyền thừa. Nếu ứng dụng và tác vụ nền đang chạy thì có một cửa sổ ngắn (vài giây) bảng mới mang quyền rộng hơn danh sách khai báo; chấp nhận được vì bản đang chạy chưa biết các bảng đó. Cần danh sách quyền đúng từng giây thì dừng ứng dụng và tác vụ nền trước khi chạy (khi nâng nhiều bản một lúc thì luôn dừng, mục 2).
 
-Đang dùng tên khác thì đổi tên trước, bằng tài khoản quản trị PostgreSQL, rồi sửa tên người dùng trong
-`DATABASE_URL` và `DATABASE_URL_WORKER` của `.env`:
+🔴 **Đừng chạy hai lệnh `db:prepare` cùng lúc.** Phần tạo tài khoản không có khoá; chỉ phần chạy migration tự khoá.
 
-```sql
-ALTER ROLE <tên cũ của tài khoản ứng dụng>  RENAME TO creator_os_app;
-ALTER ROLE <tên cũ của tài khoản tác vụ nền> RENAME TO creator_os_worker;
+Nhập chuỗi kết nối quản trị bằng biến môi trường, **không gõ thẳng vào dòng lệnh** (lịch sử shell và danh sách tiến trình của máy sẽ giữ lại mật khẩu của tài khoản siêu người dùng). Chuỗi có dạng `postgresql://<tài-khoản-quản-trị>:<mật-khẩu>@<host>:5432/postgres`; ký tự đặc biệt trong mật khẩu viết dạng `%40 %3A %2F %25 %3F %23`:
+
+```bash
+printf 'Chuỗi kết nối quản trị: '; read -rs DATABASE_URL_ADMIN; echo; export DATABASE_URL_ADMIN
 ```
 
-⚠️ Tài khoản đặt mật khẩu kiểu `md5` bị **xoá mật khẩu** khi đổi tên. Đặt lại ngay:
-`ALTER ROLE creator_os_app PASSWORD '<mk>';`, và tương tự cho `creator_os_worker`.
+Rồi chạy lệnh (`-e DATABASE_URL_ADMIN` không kèm giá trị):
 
-Lỡ chạy migration khi tên còn sai: đổi tên như trên, rồi tự cấp quyền bằng tài khoản chủ sở hữu:
-
-```sql
-GRANT USAGE ON SCHEMA creator_os TO creator_os_app, creator_os_worker;
-GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA creator_os TO creator_os_app, creator_os_worker;
-ALTER DEFAULT PRIVILEGES IN SCHEMA creator_os
-  GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO creator_os_app, creator_os_worker;
+```bash
+docker run --rm --env-file .env \
+  -e DATABASE_URL_ADMIN \
+  --entrypoint sh <kho ảnh Diso cấp>/creator-os/app:vX.Y.Z \
+  -c 'cd /repo && pnpm --filter @app/api db:prepare'
 ```
 
-Lệnh chạy migration:
+Đúng khi lệnh **thoát với mã 0** và các dòng cuối là:
+
+```
+[db-grants] OK role=creator_os_app process=db:prepare: … tables match the declared list
+[db-grants] OK role=creator_os_worker process=db:prepare: … tables match the declared list
+db:prepare: done. Every account is right.
+```
+
+Lệnh dừng và in việc cần làm (mã thoát 1) trong các trường hợp sau; làm đúng các câu được in, rồi chạy lại lệnh y như cũ:
+
+- **Tên tài khoản ứng dụng hoặc tác vụ nền sai** (khác `creator_os_app` / `creator_os_worker`): lệnh in câu `ALTER ROLE … RENAME TO …`. Chạy câu đó bằng tài khoản quản trị, sửa tên người dùng trong `DATABASE_URL` và `DATABASE_URL_WORKER` của `.env`, rồi chạy lại lệnh kèm `--reset-passwords` (cuối dòng `db:prepare`): tài khoản đặt mật khẩu kiểu `md5` bị **xoá mật khẩu** khi đổi tên.
+- **Lẫn chủ sở hữu**: mục 4e.
+- **Tài khoản migration thiếu `BYPASSRLS`**: mục 4d.
+
+Lỡ chạy migration khi tên còn sai (bản cũ): đổi tên như trên rồi chạy lệnh này, nó tự cấp lại quyền trên mọi bảng và đặt lại quy tắc cấp quyền mặc định.
+
+**Không có tài khoản quản trị** (PostgreSQL do bên khác quản lý): bỏ dòng `-e DATABASE_URL_ADMIN=…`. Lệnh chỉ kiểm, không đổi gì, in các câu SQL cho quản trị viên chạy, và thoát mã 0 khi mọi thứ đã đúng. Khi đã đúng, chạy migration bằng lệnh sau, rồi chạy lại lệnh kiểm để thấy hai dòng `OK`:
 
 ```bash
 docker run --rm --env-file .env --entrypoint sh <kho ảnh Diso cấp>/creator-os/app:vX.Y.Z \
   -c 'cd /repo && DATABASE_URL="$DATABASE_URL_MIGRATE" pnpm --filter @app/db exec prisma migrate deploy'
 ```
 
-🔴 **`DATABASE_URL="$DATABASE_URL_MIGRATE"` là bắt buộc.** Công cụ migration đọc `DATABASE_URL`, mà trong
-`.env` biến đó là tài khoản **ứng dụng** — không có quyền sửa cấu trúc bảng (mục 2 của hướng dẫn cài).
-Thiếu phần gán này thì migration dừng vì thiếu quyền.
+🔴 **`DATABASE_URL="$DATABASE_URL_MIGRATE"` là bắt buộc trong lệnh này.** Công cụ migration đọc `DATABASE_URL`, mà trong `.env` biến đó là tài khoản **ứng dụng** — không có quyền sửa cấu trúc bảng. (Lệnh `db:prepare` tự gán đúng biến, nên có tài khoản quản trị thì không phải nhớ điều này.)
 
 - `.env` là file cấu hình của bản cài đang chạy, đã bổ sung biến mới theo mục 1.
 - Chạy lại lệnh này là an toàn: migration nào đã chạy thì được bỏ qua.
-- Lệnh báo `No pending migrations to apply` nghĩa là bản mới không đổi cấu trúc — vẫn đi tiếp mục 5.
+- Lệnh `db:prepare` không in đầu ra của Prisma khi migrate thành công; thấy dòng `done. Every account is right.` là đủ. Nhánh không có tài khoản quản trị (lệnh `prisma migrate deploy` tay): dòng `No pending migrations to apply` nghĩa là bản mới không đổi cấu trúc — vẫn đi tiếp mục 5.
+- Xong thì xoá biến khỏi phiên làm việc: `unset DATABASE_URL_ADMIN`.
 
 ---
 
@@ -378,7 +294,7 @@ docker compose up -d
 | ứng dụng sẵn sàng | `curl -s -o /dev/null -w '%{http_code}\n' http://<host>:4700/api/v1/health/ready` | `200` |
 | bản quyền | `curl -s http://<host>:4700/api/v1/license/status` | `ACTIVE` |
 | tác vụ nền | `docker exec <container có RUN_WORKER=true> s6-svstat -o up /run/service/worker` | `true` |
-| quyền bảng | câu kiểm ở mục 2 của [hướng dẫn cài](reward-only-setup.md) | `bang_thieu_quyen` = `1` ở cả hai dòng (đúng thiết kế: một bảng nhận gói tin từ sàn bị thu quyền có chủ đích, xem mục 2 của hướng dẫn cài) |
+| quyền bảng | `docker logs <container mới> 2>&1 \| grep '\[db-grants\]'` | chỉ có `[db-grants] OK role=creator_os_app …` và `[db-grants] OK role=creator_os_worker …` (mỗi tiến trình một cặp). Dòng `MISMATCH` liệt kê bảng và quyền sai: chạy lại lệnh ở mục 4 |
 
 Xem nhãn `revision` của image mới:
 
@@ -514,10 +430,12 @@ Làm đúng thứ tự, mỗi lệnh một dòng (đổi `<…>` theo máy của
 1. Dừng container ứng dụng và worker (nếu chưa dừng): `docker stop <ten-container-api> <ten-container-worker>`
 2. Tạo cơ sở dữ liệu trống mới: `psql "postgresql://<owner>:<mk>@<host>:5432/postgres" -c "CREATE DATABASE creatoros_khoiphuc"`
 3. Khôi phục bản sao lưu vào cơ sở dữ liệu mới, **không** có `--clean`, dừng ngay khi có lỗi: `pg_restore --exit-on-error --dbname="postgresql://<owner>:<mk>@<host>:5432/creatoros_khoiphuc" creatoros-truoc-<ban-moi>.dump`. Mã thoát khác `0` hoặc có dòng `error:` ⇒ **DỪNG, không đổi tên**: bỏ bản nạp dở bằng `psql "postgresql://<owner>:<mk>@<host>:5432/postgres" -c "DROP DATABASE creatoros_khoiphuc"`, tìm nguyên nhân, làm lại từ bước 2. Cơ sở dữ liệu cũ chưa bị đụng. Nếu lỗi duy nhất là `COMMENT ON EXTENSION …` (khôi phục bằng tài khoản không đủ quyền trên extension), lập danh sách bỏ mục đó: `pg_restore -l creatoros-truoc-<ban-moi>.dump > ds.txt`, xoá các dòng có `COMMENT - EXTENSION`, rồi chạy lại bước 3 với thêm `-L ds.txt`. (Đo trên PG16 với tài khoản không phải superuser: không gặp lỗi này.)
-4. **Kiểm chủ sở hữu và quyền trên bản khôi phục, TRƯỚC khi đổi tên** (chỉ đọc; bỏ được bản khôi phục mà chưa đụng cơ sở dữ liệu cũ):
-   - chạy `kiem-chu-so-huu.sql` của mục 4e vào `creatoros_khoiphuc` (đổi `<db>` trong chuỗi nối thành `creatoros_khoiphuc`): `objects_not_owned_by_migrate_role` phải bằng **đúng giá trị mục 4e bước 1 đã báo lúc bạn sao lưu** (thường `0`). Nếu sao lưu **trước** khi sửa chủ ở 4e bước 2 thì số này khác `0`: chạy lại 4e bước 2 trên `creatoros_khoiphuc` cho tới khi ra `0`, rồi mới đổi tên;
-   - chạy câu ② của mục 2 trong [hướng dẫn cài](reward-only-setup.md) vào `creatoros_khoiphuc`: hai dòng `creator_os_app` / `creator_os_worker`, `dung_schema` = `t`, `bang_thieu_quyen` = `1` ở cả hai;
-   - sai một trong hai thì **không đổi tên**: bản sao lưu thật phải mang chủ sở hữu và quyền như cũ. **Không** dùng `--no-owner --no-privileges` trên bản sao lưu thật; hai cờ đó chỉ dùng khi diễn tập trên bản sao đã che quyền.
+4. **Kiểm chủ sở hữu và quyền trên bản khôi phục, TRƯỚC khi đổi tên** (chỉ đọc; bỏ được bản khôi phục mà chưa đụng cơ sở dữ liệu cũ). Tạo file cấu hình trỏ vào bản khôi phục, rồi chạy `db:prepare` **không có** `DATABASE_URL_ADMIN` (chế độ chỉ kiểm: nó không bao giờ chạy migration, nên không đẩy bản khôi phục lên cấu trúc mới). Dùng image **mới** cũng được, kể cả khi bản cũ chưa có lệnh này:
+   - `(umask 077; sed 's#/<db>?#/creatoros_khoiphuc?#' .env > .env.khoiphuc)` (file này chép toàn bộ bí mật của `.env`, nên chỉ chủ file đọc được)
+   - `docker run --rm --env-file .env.khoiphuc --entrypoint sh <kho ảnh Diso cấp>/creator-os/app:vX.Y.Z -c 'cd /repo && pnpm --filter @app/api db:prepare'`
+   - đúng khi có dòng `ownership: every object of creator_os belongs to the migration account` và hai dòng `[db-grants] OK role=creator_os_app` / `role=creator_os_worker`. Bảng chỉ có ở bản mới thì không bị đếm vào bản khôi phục;
+   - có dòng `ownership: … NOT changed automatically` hoặc `MISMATCH`: **không đổi tên**. Bản sao lưu thật phải mang chủ sở hữu và quyền như cũ. Chạy các câu lệnh in ra bằng tài khoản quản trị trên `creatoros_khoiphuc` rồi kiểm lại. **Không** dùng `--no-owner --no-privileges` trên bản sao lưu thật; hai cờ đó chỉ dùng khi diễn tập trên bản sao đã che quyền;
+   - xong thì xoá file tạm: `rm .env.khoiphuc`.
 5. Ngắt mọi kết nối còn lại vào cơ sở dữ liệu hiện tại: `psql "postgresql://<owner>:<mk>@<host>:5432/postgres" -c "SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname IN ('<db>','creatoros_khoiphuc') AND pid <> pg_backend_pid()"`
 6. Giữ cơ sở dữ liệu hỏng để điều tra: `psql "postgresql://<owner>:<mk>@<host>:5432/postgres" -c "ALTER DATABASE <db> RENAME TO <db>_loi"`
 7. Đưa bản khôi phục vào đúng tên cũ: `psql "postgresql://<owner>:<mk>@<host>:5432/postgres" -c "ALTER DATABASE creatoros_khoiphuc RENAME TO <db>"`
@@ -546,7 +464,7 @@ chơi mất điểm mà không có lỗi nào. Với những mục như vậy ch
 
 Chỉ cần khi đơn vị đã khai nhóm **sau khi lên v1.3.1** và bạn muốn image v1.3.0 vẫn áp các nhóm đó ở lần vào game. Image cũ chỉ đọc bảng cũ `integration_segment_catalog`, nên đoạn dưới chép nhóm của bảng mới `player_segment_catalog` về bảng cũ, cho **mọi tích hợp** của đơn vị. Chạy **sau khi dừng ứng dụng và worker, TRƯỚC khi đổi sang image cũ**, bằng tài khoản migration (có `BYPASSRLS`, mục 4d). Chạy lại vô hại; nhóm đã có ở bảng cũ bị **ghi đè theo bản mới** (bảng mới là bản đúng sau khi lên v1.3.1).
 
-**Trước khi chạy đoạn dưới, kiểm vai:** `SELECT rolsuper OR rolbypassrls FROM pg_roles WHERE rolname = current_user;` phải ra `t`. Ra `f` thì **dừng**: bảng cách ly dữ liệu theo đơn vị ngay trong cơ sở dữ liệu, vai không được phép bỏ qua cơ chế đó sẽ chép 0 hàng mà không báo lỗi, và câu kiểm sau đó cũng đọc 0 hàng nên ra "đạt" giả.
+**Trước khi chạy đoạn dưới, kiểm vai:** tài khoản migration phải có `BYPASSRLS` (mục 4d; lệnh `db:prepare` ở mục 4 đảm bảo điều này, chưa chạy nó ở lần nâng này thì chạy chế độ chỉ kiểm trước). Thiếu thì **dừng**: bảng cách ly dữ liệu theo đơn vị ngay trong cơ sở dữ liệu, vai không được phép bỏ qua cơ chế đó sẽ chép 0 hàng mà không báo lỗi, và câu kiểm sau đó cũng đọc 0 hàng nên ra "đạt" giả.
 
 ```sql
 INSERT INTO creator_os.integration_segment_catalog
@@ -568,7 +486,7 @@ Nhớ: sau khi quay lui, mỗi tích hợp chỉ gửi được nhóm khai cho *
 
 Làm sau khi dừng ứng dụng và worker, **TRƯỚC khi chạy image v1.3.1**, bằng tài khoản migration (có `BYPASSRLS`, mục 4d). Chạy lại vô hại. Nhóm đã có ở bảng mới chỉ bị cập nhật khi hàng ở bảng cũ **mới hơn** (`updated_at` lớn hơn); khi một nhóm có ở nhiều tích hợp thì chọn hàng theo đúng luật của migration: ACTIVE trước, rồi hàng mới nhất.
 
-**Trước khi chạy đoạn dưới, kiểm vai:** `SELECT rolsuper OR rolbypassrls FROM pg_roles WHERE rolname = current_user;` phải ra `t`. Ra `f` thì **dừng**: bảng cách ly dữ liệu theo đơn vị ngay trong cơ sở dữ liệu, vai không được phép bỏ qua cơ chế đó sẽ chép 0 hàng mà không báo lỗi, và câu kiểm sau đó cũng đọc 0 hàng nên ra "đạt" giả.
+**Trước khi chạy đoạn dưới, kiểm vai:** tài khoản migration phải có `BYPASSRLS` (mục 4d; lệnh `db:prepare` ở mục 4 đảm bảo điều này, chưa chạy nó ở lần nâng này thì chạy chế độ chỉ kiểm trước). Thiếu thì **dừng**: bảng cách ly dữ liệu theo đơn vị ngay trong cơ sở dữ liệu, vai không được phép bỏ qua cơ chế đó sẽ chép 0 hàng mà không báo lỗi, và câu kiểm sau đó cũng đọc 0 hàng nên ra "đạt" giả.
 
 ```sql
 INSERT INTO creator_os.player_segment_catalog
