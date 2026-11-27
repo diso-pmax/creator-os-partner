@@ -39,6 +39,10 @@ có gì thì ghi *"không"*, đừng bỏ trống:
 
 Không đổi.
 
+## v1.6.1 — 2026-11-27
+
+Không đổi.
+
 ## v1.6.0 — 2026-11-22
 
 **v1.6.0 là bản gom `v1.6.0-rc.1`** và là bản đưa lên production từ **v1.5.4**. Mục `v1.6.0-rc.1` nằm ở dưới, giữ nguyên làm lịch sử. Quy trình nền là [upgrade.md](upgrade.md); việc phải làm tay của lần nâng này nằm ở mục **54 migration** bên dưới (đọc mục đó trước khi đổi image), các mục còn lại không có việc phải làm tay.
